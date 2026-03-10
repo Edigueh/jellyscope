@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jellyscope — JWST Jellyfish Galaxy Explorer</title>
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <header>
+        <h1>Jellyscope</h1>
+        <span class="subtitle">JWST Jellyfish Galaxy Explorer</span>
+    </header>
+
+    <main>
+        <!-- Left: Galaxy Viewer -->
+        <section id="viewer-section">
+            <div id="viewer-controls">
+                <label for="datacube-select">Datacube:</label>
+                <select id="datacube-select">
+                    {% for dc in datacubes %}
+                    <option value="{{ dc }}">{{ dc }}</option>
+                    {% endfor %}
+                </select>
+
+                <label for="filter-slider">Filter:</label>
+                <input type="range" id="filter-slider" min="0" max="{{ filters|length - 1 }}" value="7" step="1">
+                <span id="filter-label">{{ filters[7] }}</span>
+
+                <label for="colorscale-select">Colors:</label>
+                <select id="colorscale-select">
+                    <option value="Viridis" selected>Viridis</option>
+                    <option value="Inferno">Inferno</option>
+                    <option value="Plasma">Plasma</option>
+                    <option value="Cividis">Cividis</option>
+                    <option value="Hot">Hot</option>
+                    <option value="Greys">Greys</option>
+                </select>
+
+                <span class="separator">|</span>
+
+                <button id="btn-click" class="mode-btn active" data-mode="pan" title="Pan / Click to select clump">Pan</button>
+                <button id="btn-select" class="mode-btn" data-mode="select" title="Rectangle selection">Rect</button>
+                <button id="btn-lasso" class="mode-btn" data-mode="lasso" title="Lasso selection">Lasso</button>
+            </div>
+            <div id="galaxy-viewer"></div>
+        </section>
+
+        <!-- Right panels -->
+        <aside id="right-panels">
+            <!-- Properties -->
+            <section id="properties-panel">
+                <h2>Properties</h2>
+                <div id="properties-content">
+                    <p class="placeholder">Click on a clump to see its properties</p>
+                </div>
+            </section>
+
+            <!-- Clump List -->
+            <section id="clump-list-panel">
+                <h2>Clumps
+                    <select id="clump-filter" title="Filter clumps">
+                        <option value="">All</option>
+                        <option value="disk">Disk</option>
+                        <option value="outside">Outside</option>
+                    </select>
+                </h2>
+                <div id="clump-list"></div>
+            </section>
+
+            <!-- Spectrum -->
+            <section id="spectrum-panel">
+                <h2>Spectral Energy Distribution</h2>
+                <div id="spectrum-plot"></div>
+            </section>
+        </aside>
+    </main>
+
+    <script>
+        const FILTERS = {{ filters | tojson }};
+    </script>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
