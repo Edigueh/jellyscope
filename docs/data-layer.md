@@ -3,6 +3,7 @@
 The data layer is the foundation of Jellyscope. It handles loading FITS datacubes, managing the clump catalog, and keeping everything cached in memory for fast access. All modules in this layer have zero dependencies on higher layers (analysis, visualization, web), so they can be used as standalone libraries.
 
 **Files covered**:
+
 - [config.py](../src/jellyscope/config.py) — Application configuration
 - [data/fits_handler.py](../src/jellyscope/data/fits_handler.py) — FITS datacube I/O
 - [data/clumps.py](../src/jellyscope/data/clumps.py) — Clump catalog management
@@ -50,6 +51,7 @@ class JellyscopeConfig:
 ```
 
 **Usage**:
+
 ```python
 from jellyscope.config import JellyscopeConfig
 from pathlib import Path
@@ -80,6 +82,7 @@ dc = DataCube("data/cut_datacube_nircam.fits")
 ```
 
 **What happens internally**:
+
 1. `astropy.io.fits.open(filepath)` reads the Primary HDU
 2. `hdul[0].data` is cast to `float64` and stored in `self.data`
 3. `hdul[0].header` is stored in `self.header`
@@ -90,7 +93,7 @@ dc = DataCube("data/cut_datacube_nircam.fits")
 **Attributes after init**:
 
 | Attribute | Type | Example | Description |
-|-----------|------|---------|-------------|
+| ----------- | ------ | --------- | ------------- |
 | `data` | `np.ndarray` | shape `(20, 221, 172)` | The 3D datacube array |
 | `header` | `astropy.io.fits.Header` | — | Full FITS header |
 | `wcs` | `astropy.wcs.WCS` | — | 2D WCS for RA/DEC conversion |
@@ -181,7 +184,7 @@ Manages detected clumps: their physical properties, pixel memberships, and polyg
 Stores the physical properties of one detected clump. Each field comes directly from a column in `clumps_properties.csv`.
 
 | Field | Type | Description | Example |
-|-------|------|-------------|---------|
+| ------- | ------ | ------------- | --------- |
 | `clump_id` | `int` | Unique identifier | `4` |
 | `area_pix` | `int` | Area in pixels | `144` |
 | `area_arcsec2` | `float` | Area in arcsec² | `0.0576` |
@@ -194,6 +197,7 @@ Stores the physical properties of one detected clump. Each field comes directly 
 | `component` | `str` | `"disk"` or `"outside"` | `"disk"` |
 
 **Astronomy context**:
+
 - `r_eff` (effective radius) = radius containing half the light
 - `kpc` (kiloparsec) = ~3,260 light-years
 - `arcsec` (arcsecond) = angular unit on the sky
@@ -211,6 +215,7 @@ catalog = ClumpCatalog(
 ```
 
 **What happens internally**:
+
 1. Reads `clumps_properties.csv` with pandas → creates `ClumpProperties` for each row → stored in `self.clumps: dict[int, ClumpProperties]`
 2. Reads `clumps_pixels.csv` with pandas
 3. For each clump, builds a boolean mask `(ny, nx)` from its pixel coordinates
@@ -219,7 +224,7 @@ catalog = ClumpCatalog(
 **Internal data structures**:
 
 | Attribute | Type | Description |
-|-----------|------|-------------|
+| ----------- | ------ | ------------- |
 | `clumps` | `dict[int, ClumpProperties]` | Clump ID → properties |
 | `_pixel_masks` | `dict[int, np.ndarray]` | Clump ID → boolean mask `(ny, nx)` |
 | `_clump_map` | `np.ndarray (int32)` | Shape `(ny, nx)`, each cell = clump_id or `-1` |
@@ -276,6 +281,7 @@ boundary = catalog.get_boundary_coords(4)
 **Caching**: Boundaries are computed once and cached in `self._boundaries`. Subsequent calls return the cached result.
 
 **Edge cases**:
+
 - Clumps with < 3 pixels: returns a simple polygon of the pixel coordinates
 - ConvexHull failure: falls back to listing all pixel coordinates
 
@@ -320,6 +326,7 @@ store = DataStore(JellyscopeConfig())
 ```
 
 **What happens**:
+
 1. Loads `nircam` datacube from `config.data_dir / config.datacube_file`
 2. Loads `nircam_matched` datacube from `config.data_dir / config.datacube_matched_file`
 3. Creates `ClumpCatalog` using the `nircam` datacube's spatial shape as reference

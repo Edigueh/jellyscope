@@ -3,6 +3,7 @@
 The Jellyscope frontend is a single-page application built with vanilla HTML, CSS, and JavaScript, using Plotly.js for all interactive visualizations. No frontend framework is needed — the entire controller is ~250 lines of JavaScript.
 
 **Files covered**:
+
 - [web/templates/index.html](../src/jellyscope/web/templates/index.html) — HTML structure
 - [web/static/app.js](../src/jellyscope/web/static/app.js) — JavaScript controller
 - [web/static/style.css](../src/jellyscope/web/static/style.css) — Dark theme CSS
@@ -14,6 +15,7 @@ The Jellyscope frontend is a single-page application built with vanilla HTML, CS
 **Location**: `src/jellyscope/web/templates/index.html`
 
 This is a Jinja2 template rendered by Flask. It receives two variables from the server:
+
 - `datacubes`: list of available datacube names (e.g., `["nircam", "nircam_matched"]`)
 - `filters`: list of filter names (e.g., `["F070W", "F090W", ...]`)
 
@@ -21,7 +23,7 @@ This is a Jinja2 template rendered by Flask. It receives two variables from the 
 
 The page uses CSS Grid with two columns:
 
-```
+```plaintext
 ┌──────────────────────────────────────────────────────────┐
 │  HEADER: "Jellyscope — JWST Jellyfish Galaxy Explorer"   │
 ├──────────────────────────────┬───────────────────────────┤
@@ -44,7 +46,7 @@ Right column: `360px` fixed — the three panels stack vertically.
 ### Key HTML Elements
 
 | Element ID | Type | Purpose |
-|-----------|------|---------|
+| ----------- | ------ | --------- |
 | `datacube-select` | `<select>` | Choose between nircam / nircam_matched |
 | `filter-slider` | `<input type="range">` | Navigate 20 filter channels (0-19) |
 | `filter-label` | `<span>` | Shows current filter name (e.g., "F200W") |
@@ -97,7 +99,7 @@ const state = {
 
 ### Initialization Flow
 
-```
+```plaintext
 DOMContentLoaded
     └── init()
         ├── loadClumpList()    → GET /api/clumps → populate clump list
@@ -113,14 +115,18 @@ DOMContentLoaded
 ### Function Reference
 
 #### `init()`
+
 Async entry point. Called on `DOMContentLoaded`. Loads the clump list, renders the initial viewer, and attaches all event listeners.
 
 #### `setupEventListeners()`
+
 Attaches DOM event handlers to all control elements. Each handler updates `state` and triggers the appropriate re-render.
 
 #### `renderViewer()`
+
 The core render function. Fetches the Plotly figure from the API and renders it:
-```
+
+```plaintext
 1. Build URL: /api/viewer/{datacube}/{channel}?selected={ids}&colorscale={scale}
 2. fetch(url) → JSON response with figure dict
 3. Set figure.layout.dragmode = state.dragmode
@@ -131,21 +137,27 @@ The core render function. Fetches the Plotly figure from the API and renders it:
 Called whenever: datacube changes, filter changes, colorscale changes, or clump selection changes.
 
 #### `onViewerClick(eventData)`
+
 Handles clicks on the galaxy image:
+
 1. Extract `(x, y)` pixel coordinates from the clicked point
 2. `GET /api/pixel/{x}/{y}/clump` — check if pixel belongs to a clump
 3. If clump found → `toggleClumpSelection(clumpId)`
 4. If no clump → `showPixelSpectrum(x, y)`
 
 #### `onViewerSelected(eventData)`
+
 Handles Plotly lasso/rectangle selection events:
+
 1. Extract pixel coordinates from all selected points
 2. Filter to only heatmap points (`curveNumber === 0`)
 3. `POST /api/region/spectrum/{datacube}` with pixel list
 4. Render the returned SED figure in the spectrum panel
 
 #### `toggleClumpSelection(clumpId)`
+
 Toggles a clump in/out of `state.selectedClumps`:
+
 - **0 selected**: clear all panels
 - **1 selected**: show that clump's properties + SED
 - **2+ selected**: show multi-clump SED comparison
@@ -153,26 +165,34 @@ Toggles a clump in/out of `state.selectedClumps`:
 Also calls `renderViewer()` to update boundary highlighting (selected = red).
 
 #### `showClumpDetails(clumpId)`
+
 Fetches properties and spectrum for a single clump in parallel:
+
 ```javascript
 const [propsResp, specResp] = await Promise.all([
     fetch(`/api/clumps/${clumpId}`),
     fetch(`/api/clumps/${clumpId}/spectrum/${state.datacube}`),
 ]);
 ```
+
 Updates both the properties panel (HTML table) and spectrum plot (Plotly figure).
 
 #### `showMultiClumpComparison(clumpIds)`
+
 Sends clump IDs to the comparison endpoint and renders the overlaid SED figure.
 
 #### `showPixelSpectrum(x, y)`
+
 Fetches and displays the SED for a single pixel (when clicked outside any clump).
 
 #### `loadClumpList()`
+
 Fetches the clump list from the API (with optional component filter) and calls `renderClumpList()`.
 
 #### `renderClumpList()`
+
 Generates HTML for the clump list panel. Each item has:
+
 - A checkbox for multi-selection
 - The clump ID
 - A colored badge showing component (`disk` = green, `outside` = orange)
@@ -188,15 +208,17 @@ Generates HTML for the clump list panel. Each item has:
 ```
 
 #### `updateClumpListUI()`
+
 Updates checkbox states and selected styling without re-rendering the entire list.
 
 #### `showPropertiesMessage(msg)` / `clearPanels()`
+
 Helper functions for updating/clearing the properties and spectrum panels.
 
 ### Plotly Events Used
 
 | Event | When | Action |
-|-------|------|--------|
+| ------- | ------ | -------- |
 | `plotly_click` | User clicks on the heatmap | Identify clump or show pixel spectrum |
 | `plotly_selected` | User finishes lasso/rectangle | Extract region spectrum |
 
@@ -246,16 +268,19 @@ main {
 ### Customization Guide
 
 **Change the accent color**:
+
 ```css
 :root { --accent: #ff6600; }   /* Orange theme */
 ```
 
 **Change the right panel width**:
+
 ```css
 main { grid-template-columns: 1fr 450px; }
 ```
 
 **Light theme** (override all `--bg-*` and `--text-*` variables):
+
 ```css
 :root {
     --bg-primary: #ffffff;
@@ -270,6 +295,7 @@ main { grid-template-columns: 1fr 450px; }
 ### Component Badges
 
 Clumps are color-coded by component:
+
 - **Disk clumps**: Green border and text (`#44ff44`)
 - **Outside clumps**: Orange border and text (`#ffaa00`)
 

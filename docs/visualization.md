@@ -3,6 +3,7 @@
 The visualization layer builds Plotly figure dictionaries from data. These dicts are sent to the browser as JSON, where `Plotly.react()` renders them. All functions are pure — they take data as input and return Plotly-compatible dicts.
 
 **Files covered**:
+
 - [visualization/image_viewer.py](../src/jellyscope/visualization/image_viewer.py) — Galaxy heatmap + clump overlays
 - [visualization/spectrum_plot.py](../src/jellyscope/visualization/spectrum_plot.py) — SED line plots
 - [visualization/properties_panel.py](../src/jellyscope/visualization/properties_panel.py) — Property formatting
@@ -22,6 +23,7 @@ Builds the main galaxy image as a Plotly figure with three types of traces layer
 **Why arcsinh?** Astronomical images have extreme dynamic range — the galaxy core might be 1000x brighter than the faint tails. A linear colormap would render the tails as invisible black. The `arcsinh` function behaves like `log(x)` for large values but is defined at zero (unlike `log`), making it the standard choice in optical/IR astronomy.
 
 **Algorithm**:
+
 1. Clip to [1st, 99.5th] percentile (removes outlier hot/cold pixels)
 2. Normalize to [0, 1]
 3. Apply `arcsinh(x * 10) / arcsinh(10)`
@@ -40,6 +42,7 @@ stretched = _asinh_stretch(raw_slice)     # Values in [0, 1], faint features vis
 Creates a single Plotly `heatmap` trace for a 2D image slice.
 
 **Returns** a Plotly trace dict:
+
 ```python
 {
     "type": "heatmap",
@@ -61,10 +64,12 @@ The `z` array has NaN replaced with `None` so Plotly renders gaps as transparent
 Creates one Plotly `scatter` trace per clump, rendering its boundary as a closed polygon.
 
 **Visual styling**:
+
 - **Default clumps**: cyan (`#00ccff`), thin lines (width 1.2)
 - **Selected clumps**: red (`#ff4444`), thicker lines (width 2.5)
 
 Each trace contains:
+
 ```python
 {
     "type": "scatter",
@@ -110,8 +115,9 @@ Creates a single scatter trace with all clump centroids as `x` markers with ID l
 **Main entry point**. Assembles the complete Plotly figure by combining all the traces above with a layout.
 
 **Parameters**:
+
 | Param | Type | Description |
-|-------|------|-------------|
+| ------- | ------ | ------------- |
 | `datacube` | `DataCube` | Datacube to visualize |
 | `channel_index` | `int` | Which filter channel to display |
 | `clumps` | `ClumpCatalog` | Clump catalog for overlays |
@@ -119,6 +125,7 @@ Creates a single scatter trace with all clump centroids as `x` markers with ID l
 | `colorscale` | `str` | Plotly colorscale name |
 
 **Returns**: Complete Plotly figure dict:
+
 ```python
 {
     "data": [
@@ -156,6 +163,7 @@ Total traces: 1 (heatmap) + 23 (boundaries) + 1 (centroids) = **25 traces**.
 Creates a Plotly figure showing flux vs. wavelength (the SED).
 
 **Input `spectrum` dict** must have:
+
 - `wavelengths`: list of wavelengths in microns
 - `mean_flux` or `fluxes`: list of flux values
 - Optionally `std_flux`: list of standard deviations
@@ -166,7 +174,8 @@ Creates a Plotly figure showing flux vs. wavelength (the SED).
 **Error band** (if `std_flux` provided): A filled area trace showing +/- 1 standard deviation, rendered as a semi-transparent cyan band (`rgba(0, 204, 255, 0.15)`). This is created using the `fill: "toself"` technique where upper and lower bounds are concatenated into a single closed polygon.
 
 **Hover template**: Shows filter name, wavelength, and flux value:
-```
+
+```plaintext
 F200W
 λ: 1.990 μm
 Flux: 3.4567e-01
@@ -179,12 +188,14 @@ Flux: 3.4567e-01
 Overlays multiple SEDs for comparison, each in a different color.
 
 **Parameters**:
+
 | Param | Type | Description |
-|-------|------|-------------|
+| ------- | ------ | ------------- |
 | `spectra` | `list[dict]` | List of spectrum dicts |
 | `labels` | `list[str]` | Display name for each spectrum |
 
 **Color palette**: Cycles through 8 colors:
+
 1. `#00ccff` (cyan)
 2. `#ff4444` (red)
 3. `#44ff44` (green)
@@ -207,6 +218,7 @@ The legend is shown (unlike single SED plots) so users can identify which curve 
 Converts a `ClumpProperties` dataclass into a human-readable display dict.
 
 **Returns**:
+
 ```python
 {
     "Clump ID": 4,
@@ -223,6 +235,7 @@ Converts a `ClumpProperties` dataclass into a human-readable display dict.
 ```
 
 This dict is sent to the frontend, where `app.js` renders it as an HTML table:
+
 ```html
 <table class="prop-table">
     <tr><td>Clump ID</td><td>4</td></tr>

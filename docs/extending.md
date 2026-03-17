@@ -12,7 +12,7 @@ A dataset is a collection of FITS datacubes and CSV clump catalogs for one galax
 
 Place your files in the `data/` directory (or a subdirectory):
 
-```
+```plaintext
 data/
 ├── my_new_galaxy.fits              # 3D FITS: (n_filters, ny, nx), float64
 ├── my_new_galaxy_matched.fits      # Optional: PSF-matched version
@@ -21,11 +21,13 @@ data/
 ```
 
 **FITS requirements**:
+
 - Primary HDU with 3D data array `(n_channels, ny, nx)`
 - Header keys `FILTER1`, `FILTER2`, ..., `FILTERn` with filter names
 - Standard WCS keys (`CTYPE1`, `CTYPE2`, `CRVAL1`, etc.) are optional but recommended
 
 **CSV requirements**:
+
 - `clumps_properties.csv` columns: `clump_id, area_pix, area_arcsec2, r_eff_arcsec, x0, y0, area_kpc2, r_eff_kpc, inside, component`
 - `clumps_pixels.csv` columns: `clump_id, x, y`
 - Pixel coordinates must be within the datacube spatial dimensions
@@ -43,6 +45,7 @@ config = JellyscopeConfig(
 ```
 
 Or run from CLI:
+
 ```bash
 jellyscope --data-dir data
 ```
@@ -191,6 +194,7 @@ def your_endpoint(datacube_name: str):
 ```
 
 **Conventions**:
+
 - Prefix all API routes with `/api/`
 - Use path parameters for required IDs: `/api/clumps/<int:clump_id>`
 - Use query parameters for optional filters: `?component=disk`
@@ -223,6 +227,7 @@ def create_my_figure(data: ...) -> dict:
 ```
 
 **Dark theme values** (copy these for consistency):
+
 - `plot_bgcolor`: `#1a1a2e`
 - `paper_bgcolor`: `#16213e`
 - `font.color`: `#cccccc`
@@ -236,6 +241,7 @@ def create_my_figure(data: ...) -> dict:
 The project is already structured for this. Steps:
 
 ### Build
+
 ```bash
 pip install build
 python -m build
@@ -243,18 +249,21 @@ python -m build
 ```
 
 ### Test locally
+
 ```bash
 pip install dist/jellyscope-0.1.0-py3-none-any.whl
 jellyscope --data-dir /path/to/data
 ```
 
 ### Publish to PyPI
+
 ```bash
 pip install twine
 twine upload dist/*
 ```
 
 ### Publish to TestPyPI (for testing)
+
 ```bash
 twine upload --repository testpypi dist/*
 pip install --index-url https://test.pypi.org/simple/ jellyscope
@@ -263,6 +272,7 @@ pip install --index-url https://test.pypi.org/simple/ jellyscope
 ### Version bump
 
 Update the version in two places:
+
 1. `pyproject.toml`: `version = "0.2.0"`
 2. `src/jellyscope/__init__.py`: `__version__ = "0.2.0"`
 
@@ -272,7 +282,7 @@ Update the version in two places:
 
 To evolve Jellyscope to handle multiple galaxies, you could organize data as subdirectories:
 
-```
+```plaintext
 data/
 ├── jw2736-jfg1/
 │   ├── datacube.fits

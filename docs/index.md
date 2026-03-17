@@ -67,7 +67,7 @@ jellyscope/
 ## Documentation Index
 
 | Document | Description |
-|----------|-------------|
+| ---------- | ------------- |
 | [Architecture](architecture.md) | System layers, data flow, interaction diagrams, technical decisions |
 | [Data Layer](data-layer.md) | `config.py`, `fits_handler.py`, `clumps.py`, `cache.py` — all classes and methods |
 | [Analysis](analysis.md) | `spectral.py`, `statistics.py` — SED extraction and region statistics |

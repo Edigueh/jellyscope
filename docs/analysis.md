@@ -3,6 +3,7 @@
 The analysis layer extracts scientific information from the raw datacube data. It sits between the data layer (which handles I/O) and the visualization layer (which builds Plotly figures). All functions are pure — they take data objects as input and return plain Python dicts suitable for JSON serialization.
 
 **Files covered**:
+
 - [analysis/spectral.py](../src/jellyscope/analysis/spectral.py) — SED extraction
 - [analysis/statistics.py](../src/jellyscope/analysis/statistics.py) — Region statistics
 
@@ -29,13 +30,15 @@ _wavelengths_for(["F070W", "F200W"])  # → [0.704, 1.990]
 Extracts the SED at a single spatial pixel.
 
 **Parameters**:
+
 | Param | Type | Description |
-|-------|------|-------------|
+| ------- | ------ | ------------- |
 | `datacube` | `DataCube` | The loaded datacube |
 | `x` | `int` | Pixel x coordinate |
 | `y` | `int` | Pixel y coordinate |
 
 **Returns**:
+
 ```python
 {
     "filter_names": ["F070W", "F090W", ...],    # 20 filter names
@@ -46,6 +49,7 @@ Extracts the SED at a single spatial pixel.
 ```
 
 **Usage**:
+
 ```python
 from jellyscope.data.cache import DataStore
 from jellyscope.analysis.spectral import extract_pixel_spectrum
@@ -62,13 +66,15 @@ spec = extract_pixel_spectrum(dc, 80, 100)
 Computes the mean SED over all pixels belonging to a clump. Also returns the standard deviation per channel, which represents the pixel-to-pixel variation within the clump.
 
 **Parameters**:
+
 | Param | Type | Description |
-|-------|------|-------------|
+| ------- | ------ | ------------- |
 | `datacube` | `DataCube` | The loaded datacube |
 | `clumps` | `ClumpCatalog` | The clump catalog |
 | `clump_id` | `int` | ID of the clump |
 
 **Returns**:
+
 ```python
 {
     "filter_names": ["F070W", "F090W", ...],
@@ -81,6 +87,7 @@ Computes the mean SED over all pixels belonging to a clump. Also returns the sta
 ```
 
 **How it works**:
+
 1. Gets the boolean pixel mask for the clump via `clumps.get_pixel_mask(clump_id)`
 2. Calls `datacube.get_mean_spectrum_for_mask(mask)` which computes `nanmean` and `nanstd` across all masked pixels for each channel
 3. NaN values in the result are replaced with `None` for JSON compatibility
@@ -92,8 +99,9 @@ Computes the mean SED over all pixels belonging to a clump. Also returns the sta
 Computes the mean SED for an arbitrary boolean mask. Used for lasso and rectangle selections drawn by the user.
 
 **Parameters**:
+
 | Param | Type | Description |
-|-------|------|-------------|
+| ------- | ------ | ------------- |
 | `datacube` | `DataCube` | The loaded datacube |
 | `mask` | `np.ndarray` | Boolean 2D array `(ny, nx)` |
 
@@ -102,6 +110,7 @@ Computes the mean SED for an arbitrary boolean mask. Used for lasso and rectangl
 **Edge case**: If the mask has zero `True` pixels, returns all `None` fluxes with `n_pixels: 0`.
 
 **Usage**:
+
 ```python
 import numpy as np
 from jellyscope.analysis.spectral import extract_region_spectrum
@@ -125,13 +134,15 @@ Computes summary statistics for spatial regions at specific filter channels. Use
 Statistics for a spatial region at one filter channel.
 
 **Parameters**:
+
 | Param | Type | Description |
-|-------|------|-------------|
+| ------- | ------ | ------------- |
 | `datacube` | `DataCube` | The loaded datacube |
 | `mask` | `np.ndarray` | Boolean 2D array `(ny, nx)` |
 | `channel_index` | `int` | Filter channel index `[0, n_channels)` |
 
 **Returns**:
+
 ```python
 {
     "filter": "F200W",
@@ -156,13 +167,15 @@ NaN pixels within the mask are excluded from calculations (filtered before `np.m
 Comprehensive summary combining clump physical properties with per-channel statistics.
 
 **Parameters**:
+
 | Param | Type | Description |
-|-------|------|-------------|
+| ------- | ------ | ------------- |
 | `datacube` | `DataCube` | The loaded datacube |
 | `clumps` | `ClumpCatalog` | The clump catalog |
 | `clump_id` | `int` | ID of the clump |
 
 **Returns**:
+
 ```python
 {
     "clump_id": 4,

@@ -31,6 +31,7 @@ curl http://localhost:5000/api/datacubes
 ```
 
 **Response**:
+
 ```json
 {
     "datacubes": ["nircam", "nircam_matched"]
@@ -48,11 +49,13 @@ curl http://localhost:5000/api/filters/nircam
 ```
 
 **Path parameters**:
+
 | Param | Type | Description |
-|-------|------|-------------|
+| ------- | ------ | ------------- |
 | `datacube_name` | `string` | Datacube name (`"nircam"` or `"nircam_matched"`) |
 
 **Response**:
+
 ```json
 {
     "filters": [
@@ -78,18 +81,21 @@ curl "http://localhost:5000/api/viewer/nircam/7?selected=0,4&colorscale=Viridis"
 ```
 
 **Path parameters**:
+
 | Param | Type | Description |
-|-------|------|-------------|
+| ------- | ------ | ------------- |
 | `datacube_name` | `string` | Datacube name |
 | `channel_index` | `int` | Filter channel index (0-19) |
 
 **Query parameters**:
+
 | Param | Type | Default | Description |
-|-------|------|---------|-------------|
+| ------- | ------ | --------- | ------------- |
 | `selected` | `string` | `""` | Comma-separated clump IDs to highlight |
 | `colorscale` | `string` | `"Viridis"` | Plotly colorscale name |
 
 **Response**:
+
 ```json
 {
     "figure": {
@@ -130,12 +136,14 @@ curl "http://localhost:5000/api/clumps?component=outside&inside=false"
 ```
 
 **Query parameters**:
+
 | Param | Type | Default | Description |
-|-------|------|---------|-------------|
+| ------- | ------ | --------- | ------------- |
 | `component` | `string` | all | `"disk"` or `"outside"` |
 | `inside` | `string` | all | `"true"` or `"false"` |
 
 **Response**:
+
 ```json
 {
     "clumps": [
@@ -163,6 +171,7 @@ curl http://localhost:5000/api/clumps/4
 ```
 
 **Response**:
+
 ```json
 {
     "properties": {
@@ -197,6 +206,7 @@ curl http://localhost:5000/api/clumps/4/spectrum/nircam
 ```
 
 **Response**:
+
 ```json
 {
     "spectrum": {
@@ -227,11 +237,13 @@ curl http://localhost:5000/api/pixel/72/20/clump
 ```
 
 **Response** (pixel belongs to clump 0):
+
 ```json
 {"clump_id": 0}
 ```
 
 **Response** (pixel has no clump):
+
 ```json
 {"clump_id": null}
 ```
@@ -247,6 +259,7 @@ curl http://localhost:5000/api/pixel/80/100/spectrum/nircam
 ```
 
 **Response**:
+
 ```json
 {
     "spectrum": {
@@ -271,6 +284,7 @@ curl http://localhost:5000/api/pixel/80/100/spectrum/nircam
 Extract the mean SED from an arbitrary region defined by pixel coordinates or a rectangle.
 
 **Option A: Pixel list** (from lasso selection):
+
 ```bash
 curl -X POST http://localhost:5000/api/region/spectrum/nircam \
   -H "Content-Type: application/json" \
@@ -278,6 +292,7 @@ curl -X POST http://localhost:5000/api/region/spectrum/nircam \
 ```
 
 **Option B: Rectangle**:
+
 ```bash
 curl -X POST http://localhost:5000/api/region/spectrum/nircam \
   -H "Content-Type: application/json" \
@@ -285,14 +300,16 @@ curl -X POST http://localhost:5000/api/region/spectrum/nircam \
 ```
 
 **Request body**:
+
 | Field | Type | Description |
-|-------|------|-------------|
+| ------- | ------ | ------------- |
 | `pixels` | `list[list[int]]` | List of `[x, y]` pairs |
 | `rect` | `object` | Rectangle with `x0, y0, x1, y1` |
 
 Only one of `pixels` or `rect` should be provided. If both are present, `pixels` takes precedence.
 
 **Response**:
+
 ```json
 {
     "spectrum": {
@@ -324,11 +341,13 @@ curl -X POST http://localhost:5000/api/compare/spectrum/nircam \
 ```
 
 **Request body**:
+
 | Field | Type | Description |
-|-------|------|-------------|
+| ------- | ------ | ------------- |
 | `clump_ids` | `list[int]` | List of clump IDs to compare |
 
 **Response**:
+
 ```json
 {
     "figure": {
