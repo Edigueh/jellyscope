@@ -1,6 +1,5 @@
 """Tests for CLI entry point."""
 
-import runpy
 from unittest.mock import patch
 
 from jellyscope.cli import main
