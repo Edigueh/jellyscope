@@ -5,11 +5,26 @@ from pathlib import Path
 
 # JWST NIRCam filter central wavelengths in microns
 NIRCAM_WAVELENGTHS: dict[str, float] = {
-    "F070W": 0.704, "F090W": 0.901, "F115W": 1.154, "F140M": 1.404,
-    "F150W": 1.501, "F162M": 1.627, "F182M": 1.845, "F200W": 1.990,
-    "F210M": 2.093, "F250M": 2.503, "F277W": 2.786, "F300M": 2.996,
-    "F335M": 3.365, "F356W": 3.563, "F360M": 3.621, "F410M": 4.092,
-    "F430M": 4.280, "F444W": 4.421, "F460M": 4.624, "F480M": 4.834,
+    "F070W": 0.704,
+    "F090W": 0.901,
+    "F115W": 1.154,
+    "F140M": 1.404,
+    "F150W": 1.501,
+    "F162M": 1.627,
+    "F182M": 1.845,
+    "F200W": 1.990,
+    "F210M": 2.093,
+    "F250M": 2.503,
+    "F277W": 2.786,
+    "F300M": 2.996,
+    "F335M": 3.365,
+    "F356W": 3.563,
+    "F360M": 3.621,
+    "F410M": 4.092,
+    "F430M": 4.280,
+    "F444W": 4.421,
+    "F460M": 4.624,
+    "F480M": 4.834,
 }
 
 
@@ -30,6 +45,4 @@ class JellyscopeConfig:
     port: int = 5000
     debug: bool = True
     default_colorscale: str = "Viridis"
-    filter_wavelengths: dict[str, float] = field(
-        default_factory=lambda: dict(NIRCAM_WAVELENGTHS)
-    )
+    filter_wavelengths: dict[str, float] = field(default_factory=lambda: dict(NIRCAM_WAVELENGTHS))

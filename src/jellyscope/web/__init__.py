@@ -22,6 +22,7 @@ def create_app(config: JellyscopeConfig | None = None) -> Flask:
     DataStore.get(config)
 
     from .routes import bp
+
     app.register_blueprint(bp)
 
     return app

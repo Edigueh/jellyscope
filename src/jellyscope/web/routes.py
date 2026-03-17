@@ -1,18 +1,17 @@
 """REST API endpoints and page routes."""
 
 import numpy as np
-from flask import Blueprint, jsonify, request, render_template
+from flask import Blueprint, Response, jsonify, render_template, request
 
-from ..data.cache import DataStore
 from ..analysis.spectral import (
     extract_clump_spectrum,
     extract_pixel_spectrum,
     extract_region_spectrum,
 )
-from ..analysis.statistics import compute_region_stats
+from ..data.cache import DataStore
 from ..visualization.image_viewer import build_viewer_figure
-from ..visualization.spectrum_plot import create_sed_figure, create_multi_sed_figure
 from ..visualization.properties_panel import format_clump_properties
+from ..visualization.spectrum_plot import create_multi_sed_figure, create_sed_figure
 
 bp = Blueprint("api", __name__)
 
@@ -23,8 +22,9 @@ def _store() -> DataStore:
 
 # --- Pages ---
 
+
 @bp.route("/")
-def index():
+def index() -> str:
     store = _store()
     return render_template(
         "index.html",
@@ -35,37 +35,39 @@ def index():
 
 # --- Datacube info ---
 
+
 @bp.route("/api/datacubes")
-def list_datacubes():
+def list_datacubes() -> Response:
     store = _store()
     return jsonify({"datacubes": store.list_datacubes()})
 
 
 @bp.route("/api/filters/<datacube_name>")
-def list_filters(datacube_name: str):
+def list_filters(datacube_name: str) -> Response:
     dc = _store().get_datacube(datacube_name)
     from ..config import NIRCAM_WAVELENGTHS
+
     filters = []
     for i, name in enumerate(dc.filter_names):
-        filters.append({
-            "index": i,
-            "name": name,
-            "wavelength": NIRCAM_WAVELENGTHS.get(name, 0.0),
-        })
+        filters.append(
+            {
+                "index": i,
+                "name": name,
+                "wavelength": NIRCAM_WAVELENGTHS.get(name, 0.0),
+            }
+        )
     return jsonify({"filters": filters})
 
 
 # --- Image viewer ---
 
+
 @bp.route("/api/viewer/<datacube_name>/<int:channel_index>")
-def get_viewer_figure(datacube_name: str, channel_index: int):
+def get_viewer_figure(datacube_name: str, channel_index: int) -> Response:
     store = _store()
     dc = store.get_datacube(datacube_name)
     selected_str = request.args.get("selected", "")
-    selected_ids = (
-        [int(x) for x in selected_str.split(",") if x.strip()]
-        if selected_str else []
-    )
+    selected_ids = [int(x) for x in selected_str.split(",") if x.strip()] if selected_str else []
     colorscale = request.args.get("colorscale", "Viridis")
     figure = build_viewer_figure(dc, channel_index, store.clumps, selected_ids, colorscale)
     return jsonify({"figure": figure, "filter_name": dc.filter_names[channel_index]})
@@ -73,31 +75,35 @@ def get_viewer_figure(datacube_name: str, channel_index: int):
 
 # --- Clumps ---
 
+
 @bp.route("/api/clumps")
-def list_clumps():
+def list_clumps() -> Response:
     store = _store()
     component = request.args.get("component")
-    inside = request.args.get("inside")
-    if inside is not None:
-        inside = inside.lower() == "true"
-    clumps = store.clumps.filter_clumps(component=component, inside=inside)
-    return jsonify({
-        "clumps": [
-            {
-                "clump_id": c.clump_id,
-                "x0": round(c.x0, 2),
-                "y0": round(c.y0, 2),
-                "area_pix": c.area_pix,
-                "component": c.component,
-                "inside": c.inside,
-            }
-            for c in clumps
-        ]
-    })
+    inside_param = request.args.get("inside")
+    is_inside: bool | None = None
+    if inside_param is not None:
+        is_inside = inside_param.lower() == "true"
+    clumps = store.clumps.filter_clumps(component=component, inside=is_inside)
+    return jsonify(
+        {
+            "clumps": [
+                {
+                    "clump_id": c.clump_id,
+                    "x0": round(c.x0, 2),
+                    "y0": round(c.y0, 2),
+                    "area_pix": c.area_pix,
+                    "component": c.component,
+                    "inside": c.inside,
+                }
+                for c in clumps
+            ]
+        }
+    )
 
 
 @bp.route("/api/clumps/<int:clump_id>")
-def get_clump(clump_id: int):
+def get_clump(clump_id: int) -> Response:
     store = _store()
     clump = store.clumps.get_clump(clump_id)
     boundary = store.clumps.get_boundary_coords(clump_id)
@@ -106,7 +112,7 @@ def get_clump(clump_id: int):
 
 
 @bp.route("/api/clumps/<int:clump_id>/spectrum/<datacube_name>")
-def get_clump_spectrum(clump_id: int, datacube_name: str):
+def get_clump_spectrum(clump_id: int, datacube_name: str) -> Response:
     store = _store()
     dc = store.get_datacube(datacube_name)
     spectrum = extract_clump_spectrum(dc, store.clumps, clump_id)
@@ -116,15 +122,16 @@ def get_clump_spectrum(clump_id: int, datacube_name: str):
 
 # --- Pixel interaction ---
 
+
 @bp.route("/api/pixel/<int:x>/<int:y>/clump")
-def get_pixel_clump(x: int, y: int):
+def get_pixel_clump(x: int, y: int) -> Response:
     store = _store()
     cid = store.clumps.get_clump_at_pixel(x, y)
     return jsonify({"clump_id": cid})
 
 
 @bp.route("/api/pixel/<int:x>/<int:y>/spectrum/<datacube_name>")
-def get_pixel_spectrum(x: int, y: int, datacube_name: str):
+def get_pixel_spectrum(x: int, y: int, datacube_name: str) -> Response:
     store = _store()
     dc = store.get_datacube(datacube_name)
     spectrum = extract_pixel_spectrum(dc, x, y)
@@ -134,8 +141,9 @@ def get_pixel_spectrum(x: int, y: int, datacube_name: str):
 
 # --- Region selection ---
 
+
 @bp.route("/api/region/spectrum/<datacube_name>", methods=["POST"])
-def get_region_spectrum(datacube_name: str):
+def get_region_spectrum(datacube_name: str) -> Response:
     store = _store()
     dc = store.get_datacube(datacube_name)
     body = request.get_json()
@@ -162,8 +170,9 @@ def get_region_spectrum(datacube_name: str):
 
 # --- Multi-clump comparison ---
 
+
 @bp.route("/api/compare/spectrum/<datacube_name>", methods=["POST"])
-def compare_spectra(datacube_name: str):
+def compare_spectra(datacube_name: str) -> Response:
     store = _store()
     dc = store.get_datacube(datacube_name)
     body = request.get_json()

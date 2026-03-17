@@ -48,3 +48,22 @@ def test_to_json_slice(store):
 def test_both_datacubes_available(store):
     assert "nircam" in store.list_datacubes()
     assert "nircam_matched" in store.list_datacubes()
+
+
+def test_get_slice_out_of_range(store):
+    import pytest
+
+    dc = store.get_datacube("nircam")
+    with pytest.raises(IndexError, match="out of range"):
+        dc.get_slice(99)
+
+
+def test_fallback_filter_names(store):
+    dc = store.get_datacube("nircam")
+    # Temporarily remove a filter key and test fallback
+    original = dc.header.get("FILTER1")
+    del dc.header["FILTER1"]
+    names = dc._read_filter_names()
+    assert names[0] == "CH1"
+    assert names[1] == dc.filter_names[1]  # rest unchanged
+    dc.header["FILTER1"] = original

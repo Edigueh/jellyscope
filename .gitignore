@@ -13,6 +13,7 @@ env/
 *.so
 .ruff_cache/
 .pytest_cache/
+.mypy_cache/
 htmlcov/
 .coverage
 *.fits

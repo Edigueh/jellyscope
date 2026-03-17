@@ -8,12 +8,12 @@ from .web import create_app
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Jellyscope: JWST Jellyfish Galaxy Explorer"
-    )
+    parser = argparse.ArgumentParser(description="Jellyscope: JWST Jellyfish Galaxy Explorer")
     parser.add_argument("--host", default="127.0.0.1", help="Server host (default: 127.0.0.1)")
     parser.add_argument("--port", type=int, default=5000, help="Server port (default: 5000)")
-    parser.add_argument("--data-dir", default="data", help="Path to data directory (default: data)")
+    parser.add_argument(
+        "--data-dir", default="data", help="Path to data directory (default: data)"
+    )
     parser.add_argument("--no-debug", action="store_true", help="Disable debug mode")
     args = parser.parse_args()
 

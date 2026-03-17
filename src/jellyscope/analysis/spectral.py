@@ -3,8 +3,8 @@
 import numpy as np
 
 from ..config import NIRCAM_WAVELENGTHS
-from ..data.fits_handler import DataCube
 from ..data.clumps import ClumpCatalog
+from ..data.fits_handler import DataCube
 
 
 def _wavelengths_for(filter_names: list[str]) -> list[float]:
@@ -26,9 +26,7 @@ def extract_pixel_spectrum(datacube: DataCube, x: int, y: int) -> dict:
     }
 
 
-def extract_clump_spectrum(
-    datacube: DataCube, clumps: ClumpCatalog, clump_id: int
-) -> dict:
+def extract_clump_spectrum(datacube: DataCube, clumps: ClumpCatalog, clump_id: int) -> dict:
     """Mean spectrum for a clump region."""
     mask = clumps.get_pixel_mask(clump_id)
     mean_flux, std_flux = datacube.get_mean_spectrum_for_mask(mask)

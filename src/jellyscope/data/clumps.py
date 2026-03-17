@@ -5,7 +5,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from scipy.spatial import ConvexHull
+from scipy.spatial import ConvexHull, QhullError
 
 
 @dataclass
@@ -69,7 +69,7 @@ class ClumpCatalog:
                     self._clump_map[y, x] = cid
             self._pixel_masks[cid] = mask
 
-        self._boundaries: dict[int, list[tuple[int, int]]] = {}
+        self._boundaries: dict[int, list[tuple[float, float]]] = {}
 
     def get_clump(self, clump_id: int) -> ClumpProperties:
         return self.clumps[clump_id]
@@ -104,7 +104,7 @@ class ClumpCatalog:
         ys, xs = np.where(mask)
 
         if len(xs) < 3:
-            coords = list(zip(xs.astype(float), ys.astype(float)))
+            coords = list(zip(xs.astype(float), ys.astype(float), strict=True))
             coords.append(coords[0])
             self._boundaries[clump_id] = coords
             return coords
@@ -115,8 +115,8 @@ class ClumpCatalog:
             verts = hull.vertices
             coords = [(float(points[v, 0]), float(points[v, 1])) for v in verts]
             coords.append(coords[0])
-        except Exception:
-            coords = list(zip(xs.astype(float), ys.astype(float)))
+        except QhullError:
+            coords = list(zip(xs.astype(float), ys.astype(float), strict=True))
             coords.append(coords[0])
 
         self._boundaries[clump_id] = coords

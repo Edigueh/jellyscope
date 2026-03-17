@@ -1,8 +1,8 @@
 """Tests for spectral extraction."""
 
 from jellyscope.analysis.spectral import (
-    extract_pixel_spectrum,
     extract_clump_spectrum,
+    extract_pixel_spectrum,
     extract_region_spectrum,
 )
 
@@ -26,6 +26,7 @@ def test_clump_spectrum(store):
 
 def test_region_spectrum_with_mask(store):
     import numpy as np
+
     dc = store.get_datacube("nircam")
     mask = np.zeros(dc.spatial_shape, dtype=bool)
     mask[50:60, 50:60] = True
@@ -36,6 +37,7 @@ def test_region_spectrum_with_mask(store):
 
 def test_empty_region_spectrum(store):
     import numpy as np
+
     dc = store.get_datacube("nircam")
     mask = np.zeros(dc.spatial_shape, dtype=bool)
     result = extract_region_spectrum(dc, mask)

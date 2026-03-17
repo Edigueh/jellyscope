@@ -47,10 +47,8 @@ class DataCube:
     def get_slice(self, channel_index: int) -> np.ndarray:
         """Return 2D array (ny, nx) for a single filter channel."""
         if not 0 <= channel_index < self.n_channels:
-            raise IndexError(
-                f"Channel index {channel_index} out of range [0, {self.n_channels})"
-            )
-        return self.data[channel_index]
+            raise IndexError(f"Channel index {channel_index} out of range [0, {self.n_channels})")
+        return np.asarray(self.data[channel_index])
 
     def get_slice_by_name(self, filter_name: str) -> np.ndarray:
         """Return 2D slice by filter name (e.g., 'F200W')."""

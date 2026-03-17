@@ -2,8 +2,8 @@
 
 import numpy as np
 
-from ..data.fits_handler import DataCube
 from ..data.clumps import ClumpCatalog
+from ..data.fits_handler import DataCube
 
 
 def _asinh_stretch(data: np.ndarray) -> np.ndarray:
@@ -18,12 +18,13 @@ def _asinh_stretch(data: np.ndarray) -> np.ndarray:
     vmax = np.percentile(finite, 99.5)
     clipped = np.clip(data, vmin, vmax)
     normalized = (clipped - vmin) / (vmax - vmin + 1e-10)
-    return np.arcsinh(normalized * 10) / np.arcsinh(10)
+    stretched: np.ndarray = np.arcsinh(normalized * 10) / np.arcsinh(10)
+    return stretched
 
 
 def create_galaxy_heatmap(
     slice_data: np.ndarray,
-    filter_name: str,
+    _filter_name: str,
     colorscale: str = "Viridis",
 ) -> dict:
     """Create a Plotly heatmap trace for a datacube slice."""
@@ -54,20 +55,22 @@ def create_clump_boundary_traces(
         ys = [p[1] for p in boundary]
         is_selected = cid in selected
         c = clumps.get_clump(cid)
-        traces.append({
-            "type": "scatter",
-            "x": xs,
-            "y": ys,
-            "mode": "lines",
-            "line": {
-                "color": "#ff4444" if is_selected else "#00ccff",
-                "width": 2.5 if is_selected else 1.2,
-            },
-            "name": f"Clump {cid}",
-            "hoverinfo": "text",
-            "text": f"Clump {cid} ({c.component})",
-            "showlegend": False,
-        })
+        traces.append(
+            {
+                "type": "scatter",
+                "x": xs,
+                "y": ys,
+                "mode": "lines",
+                "line": {
+                    "color": "#ff4444" if is_selected else "#00ccff",
+                    "width": 2.5 if is_selected else 1.2,
+                },
+                "name": f"Clump {cid}",
+                "hoverinfo": "text",
+                "text": f"Clump {cid} ({c.component})",
+                "showlegend": False,
+            }
+        )
     return traces
 
 
@@ -83,9 +86,7 @@ def create_centroid_markers(clumps: ClumpCatalog) -> dict:
         "text": [str(c.clump_id) for c in all_clumps],
         "textposition": "top right",
         "textfont": {"color": "#cccccc", "size": 9},
-        "hovertemplate": (
-            "Clump %{text}<br>x: %{x:.1f}<br>y: %{y:.1f}<extra></extra>"
-        ),
+        "hovertemplate": ("Clump %{text}<br>x: %{x:.1f}<br>y: %{y:.1f}<extra></extra>"),
         "name": "Centroids",
         "showlegend": False,
     }
@@ -106,7 +107,7 @@ def build_viewer_figure(
     boundaries = create_clump_boundary_traces(clumps, selected_ids)
     centroids = create_centroid_markers(clumps)
 
-    data = [heatmap] + boundaries + [centroids]
+    data = [heatmap, *boundaries, centroids]
 
     layout = {
         "title": {

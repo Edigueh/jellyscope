@@ -1,7 +1,8 @@
 """Shared test fixtures."""
 
-import pytest
 from pathlib import Path
+
+import pytest
 
 from jellyscope.config import JellyscopeConfig
 from jellyscope.data.cache import DataStore
@@ -18,15 +19,16 @@ def store(config):
     return DataStore.get(config)
 
 
-@pytest.fixture()
+@pytest.fixture
 def app(config):
     from jellyscope.web import create_app
+
     DataStore.reset()
     app = create_app(config)
     app.config["TESTING"] = True
     return app
 
 
-@pytest.fixture()
+@pytest.fixture
 def client(app):
     return app.test_client()

@@ -3,8 +3,8 @@
 from pathlib import Path
 
 from ..config import JellyscopeConfig
-from .fits_handler import DataCube
 from .clumps import ClumpCatalog
+from .fits_handler import DataCube
 
 
 class DataStore:

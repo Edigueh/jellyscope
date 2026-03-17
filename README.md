@@ -16,15 +16,13 @@ Jellyscope lets you explore multi-filter NIRCam datacubes, select regions of gal
 ## Installation
 
 ```bash
-conda create -n jellyscope python=3.11 -y
-conda activate jellyscope
-pip install -e .
+uv sync --extra dev
 ```
 
 ## Usage
 
 ```bash
-jellyscope --data-dir data
+uv run jellyscope --data-dir data
 ```
 
 Then open http://127.0.0.1:5000 in your browser.
@@ -46,12 +44,33 @@ Place your data in the `data/` directory:
 - **clumps_properties.csv** — Columns: `clump_id, area_pix, area_arcsec2, r_eff_arcsec, x0, y0, area_kpc2, r_eff_kpc, inside, component`
 - **clumps_pixels.csv** — Columns: `clump_id, x, y`
 
-## Running Tests
+## Development
+
+This project uses modern Python tooling managed via [uv](https://docs.astral.sh/uv/) and a `Makefile`.
 
 ```bash
-pip install -e ".[dev]"
-pytest
+make install       # Install deps + set up pre-commit hooks
+make lint          # Run ruff linter
+make lint-fix      # Auto-fix lint issues
+make format        # Format code with ruff
+make typecheck     # Run mypy type checking
+make test          # Run tests with coverage
+make test-fast     # Quick test run (no coverage, stop on first failure)
+make check         # Run ALL checks (lint + format + typecheck + tests)
+make spellcheck    # Check for typos in code/docs
+make serve         # Start the dev server
+make clean         # Remove build artifacts
 ```
+
+### Tooling
+
+| Tool | Purpose |
+|------|---------|
+| [uv](https://docs.astral.sh/uv/) | Package management, venv, lockfile |
+| [ruff](https://docs.astral.sh/ruff/) | Linting + formatting |
+| [mypy](https://mypy.readthedocs.io/) | Static type checking |
+| [pre-commit](https://pre-commit.com/) | Git hooks (lint, format, typecheck before each commit) |
+| [codespell](https://github.com/codespell-project/codespell) | Typo detection |
 
 ## Project Structure
 

@@ -12,39 +12,45 @@ def create_sed_figure(spectrum: dict, title: str = "Spectral Energy Distribution
     fluxes = spectrum.get("mean_flux") or spectrum.get("fluxes", [])
     filter_names = spectrum.get("filter_names", [])
 
-    traces = [{
-        "type": "scatter",
-        "x": wavelengths,
-        "y": fluxes,
-        "mode": "lines+markers",
-        "marker": {"size": 7, "color": "#00ccff"},
-        "line": {"color": "#00ccff", "width": 2},
-        "text": filter_names,
-        "hovertemplate": "%{text}<br>\u03bb: %{x:.3f} \u00b5m<br>Flux: %{y:.4e}<extra></extra>",
-        "name": "SED",
-    }]
+    traces = [
+        {
+            "type": "scatter",
+            "x": wavelengths,
+            "y": fluxes,
+            "mode": "lines+markers",
+            "marker": {"size": 7, "color": "#00ccff"},
+            "line": {"color": "#00ccff", "width": 2},
+            "text": filter_names,
+            "hovertemplate": (
+                "%{text}<br>\u03bb: %{x:.3f} \u00b5m<br>Flux: %{y:.4e}<extra></extra>"
+            ),
+            "name": "SED",
+        }
+    ]
 
     if "std_flux" in spectrum:
         std = spectrum["std_flux"]
         upper = [
             (f + s) if f is not None and s is not None else None
-            for f, s in zip(fluxes, std)
+            for f, s in zip(fluxes, std, strict=True)
         ]
         lower = [
             (f - s) if f is not None and s is not None else None
-            for f, s in zip(fluxes, std)
+            for f, s in zip(fluxes, std, strict=True)
         ]
-        traces.append({
-            "type": "scatter",
-            "x": wavelengths + wavelengths[::-1],
-            "y": upper + lower[::-1],
-            "fill": "toself",
-            "fillcolor": "rgba(0, 204, 255, 0.15)",
-            "line": {"color": "rgba(0,0,0,0)"},
-            "hoverinfo": "skip",
-            "showlegend": False,
-            "name": "\u00b11\u03c3",
-        })
+        traces.append(
+            {
+                "type": "scatter",
+                "x": wavelengths + wavelengths[::-1],
+                "y": upper + lower[::-1],
+                "fill": "toself",
+                "fillcolor": "rgba(0, 204, 255, 0.15)",
+                "line": {"color": "rgba(0,0,0,0)"},
+                "hoverinfo": "skip",
+                "showlegend": False,
+                "name": "\u00b11\u03c3",
+            }
+        )
 
     layout = {
         "title": {"text": title, "font": {"color": "#cccccc"}},
@@ -68,27 +74,38 @@ def create_sed_figure(spectrum: dict, title: str = "Spectral Energy Distribution
     return {"data": traces, "layout": layout}
 
 
-def create_multi_sed_figure(
-    spectra: list[dict], labels: list[str]
-) -> dict:
+def create_multi_sed_figure(spectra: list[dict], labels: list[str]) -> dict:
     """Overlay multiple SEDs for comparison."""
-    colors = ["#00ccff", "#ff4444", "#44ff44", "#ffaa00", "#ff44ff",
-              "#44ffff", "#ffff44", "#aa44ff"]
+    colors = [
+        "#00ccff",
+        "#ff4444",
+        "#44ff44",
+        "#ffaa00",
+        "#ff44ff",
+        "#44ffff",
+        "#ffff44",
+        "#aa44ff",
+    ]
     traces = []
-    for i, (spec, label) in enumerate(zip(spectra, labels)):
+    for i, (spec, label) in enumerate(zip(spectra, labels, strict=True)):
         color = colors[i % len(colors)]
         fluxes = spec.get("mean_flux") or spec.get("fluxes", [])
-        traces.append({
-            "type": "scatter",
-            "x": spec["wavelengths"],
-            "y": fluxes,
-            "mode": "lines+markers",
-            "marker": {"size": 6, "color": color},
-            "line": {"color": color, "width": 2},
-            "name": label,
-            "text": spec.get("filter_names", []),
-            "hovertemplate": f"{label}<br>%{{text}}<br>\u03bb: %{{x:.3f}} \u00b5m<br>Flux: %{{y:.4e}}<extra></extra>",
-        })
+        traces.append(
+            {
+                "type": "scatter",
+                "x": spec["wavelengths"],
+                "y": fluxes,
+                "mode": "lines+markers",
+                "marker": {"size": 6, "color": color},
+                "line": {"color": color, "width": 2},
+                "name": label,
+                "text": spec.get("filter_names", []),
+                "hovertemplate": (
+                    f"{label}<br>%{{text}}<br>"
+                    "\u03bb: %{x:.3f} \u00b5m<br>Flux: %{y:.4e}<extra></extra>"
+                ),
+            }
+        )
 
     layout = {
         "title": {"text": "SED Comparison", "font": {"color": "#cccccc"}},

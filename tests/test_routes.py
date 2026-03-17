@@ -89,3 +89,46 @@ def test_compare_spectra(client):
     data = resp.get_json()
     assert len(data["spectra"]) == 3
     assert len(data["figure"]["data"]) == 3
+
+
+def test_list_clumps_with_inside_filter(client):
+    resp = client.get("/api/clumps?inside=true")
+    data = resp.get_json()
+    assert all(c["inside"] is True for c in data["clumps"])
+
+    resp = client.get("/api/clumps?inside=false")
+    data = resp.get_json()
+    assert all(c["inside"] is False for c in data["clumps"])
+
+
+def test_region_spectrum_pixels(client):
+    resp = client.post(
+        "/api/region/spectrum/nircam",
+        data=json.dumps({"pixels": [[80, 100], [81, 100]]}),
+        content_type="application/json",
+    )
+    data = resp.get_json()
+    assert data["spectrum"]["n_pixels"] == 2
+
+
+def test_region_spectrum_rect_clipping(client):
+    resp = client.post(
+        "/api/region/spectrum/nircam",
+        data=json.dumps({"rect": {"x0": -10, "y0": -10, "x1": 5, "y1": 5}}),
+        content_type="application/json",
+    )
+    data = resp.get_json()
+    assert data["spectrum"]["n_pixels"] > 0
+
+
+def test_viewer_all_nan(client):
+    from unittest.mock import patch
+
+    import numpy as np
+
+    nan_slice = np.full((221, 172), np.nan)
+    with patch("jellyscope.visualization.image_viewer.DataCube") as _:
+        from jellyscope.visualization.image_viewer import _asinh_stretch
+
+        result = _asinh_stretch(nan_slice)
+        assert result.shape == (221, 172)
