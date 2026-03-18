@@ -46,7 +46,7 @@ jellyscope/
 │   │
 │   ├── web/                            # Flask web application
 │   │   ├── __init__.py                 # App factory (create_app)
-│   │   ├── routes.py                   # 13 REST API endpoints
+│   │   ├── routes.py                   # 10 REST API endpoints
 │   │   ├── templates/index.html        # Single-page HTML template
 │   │   └── static/
 │   │       ├── app.js                  # Frontend controller (Plotly + fetch)
@@ -54,12 +54,15 @@ jellyscope/
 │   │
 │   └── cli.py                          # Command-line entry point
 │
-├── tests/                              # Test suite (31 tests)
+├── tests/                              # Test suite (51 tests)
 │   ├── conftest.py                     # Shared fixtures
 │   ├── test_fits_handler.py            # DataCube tests
 │   ├── test_clumps.py                  # ClumpCatalog tests
 │   ├── test_spectral.py                # Spectral extraction tests
-│   └── test_routes.py                  # Flask endpoint tests
+│   ├── test_statistics.py              # Region statistics tests
+│   ├── test_cache.py                   # DataStore tests
+│   ├── test_routes.py                  # Flask endpoint tests
+│   └── test_cli.py                     # CLI entry point tests
 │
 └── docs/                               # This documentation
 ```
@@ -72,7 +75,7 @@ jellyscope/
 | [Data Layer](data-layer.md) | `config.py`, `fits_handler.py`, `clumps.py`, `cache.py` — all classes and methods |
 | [Analysis](analysis.md) | `spectral.py`, `statistics.py` — SED extraction and region statistics |
 | [Visualization](visualization.md) | `image_viewer.py`, `spectrum_plot.py`, `properties_panel.py` — Plotly figure builders |
-| [API Reference](api-reference.md) | All 13 REST endpoints with parameters, responses, and curl examples |
+| [API Reference](api-reference.md) | All 10 REST endpoints with parameters, responses, and curl examples |
 | [Frontend](frontend.md) | `index.html`, `app.js`, `style.css` — UI layout, JS controller, Plotly events |
 | [Extending](extending.md) | How to add new datasets, analysis modules, endpoints, and visualizations |
 
@@ -80,16 +83,13 @@ jellyscope/
 
 ```bash
 # Install
-conda create -n jellyscope python=3.11 -y
-conda activate jellyscope
-pip install -e .
+uv sync --extra dev
 
 # Run
-jellyscope --data-dir data
+uv run jellyscope --data-dir data
 
 # Open http://127.0.0.1:5000
 
 # Test
-pip install -e ".[dev]"
-pytest
+uv run pytest
 ```

@@ -14,7 +14,7 @@ Jellyscope follows a layered architecture where each layer only depends on layer
                        │ HTTP (JSON)
 ┌──────────────────────▼──────────────────────────┐
 │              Web Layer (Flask)                  │
-│  routes.py — 13 REST endpoints                  │
+│  routes.py — 10 REST endpoints                  │
 │  templates/index.html — SPA page                │
 │  static/app.js — frontend controller            │
 └──────────┬──────────────────┬───────────────────┘
