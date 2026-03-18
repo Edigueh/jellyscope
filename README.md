@@ -13,6 +13,11 @@ Jellyscope lets you explore multi-filter NIRCam datacubes, select regions of gal
 - **Filter navigation** — Slider to browse all 20 NIRCam filters (0.7–4.8 μm)
 - **Dual datacubes** — Switch between original and PSF-matched datacubes
 
+## Requirements
+
+- Python 3.11+
+- [uv](https://docs.astral.sh/uv/) package manager
+
 ## Installation
 
 ```bash
