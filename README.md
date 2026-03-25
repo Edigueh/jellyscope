@@ -4,15 +4,6 @@ Interactive web application for visualizing JWST jellyfish galaxy datacubes.
 
 Jellyscope lets you explore multi-filter NIRCam datacubes, select regions of galaxies (clumps, tails, disk), and visualize their spectral energy distributions (SEDs) and physical properties.
 
-## Features
-
-- **Interactive galaxy viewer** — Plotly heatmap with arcsinh stretch, pan/zoom, and clump boundary overlays
-- **Clump selection** — Click on detected clumps to view properties and SEDs
-- **Region selection** — Draw rectangles or lasso regions to extract spectra from arbitrary areas
-- **Multi-clump comparison** — Select multiple clumps to overlay their SEDs
-- **Filter navigation** — Slider to browse all 20 NIRCam filters (0.7–4.8 μm)
-- **Dual datacubes** — Switch between original and PSF-matched datacubes
-
 ## Requirements
 
 - Python 3.11+
