@@ -10,16 +10,15 @@ from astropy.wcs import WCS  # Handles "World Coordinate System" (mapping pixels
 class DataCube:
     """"Manages a 3D FITS datacube (filter, y, x).
 
-    FITS: Flexible Image Transport System.
-
     Reads all metadata (filters, WCS, dimensions) from the FITS file header.
+    FITS = (Flexible Image Transport System).
     """
 
     def __init__(self, filepath: Path | str) -> None:
         filepath = Path(filepath)
         with fits.open(filepath) as hdul:
             # Extracts the raw pixel data and converts to float64 for precision.
-            self.data :np.ndarray = hdul[0].data.astype(np.float64)
+            self.data: np.ndarray = hdul[0].data.astype(np.float64)
             # The header contains metadata such as telescope name, exposure time...
             self.header = hdul[0].header
             # Initializes the WCS to map (x, y) to celestial coordinates.
