@@ -8,7 +8,7 @@ from astropy.wcs import WCS  # Handles "World Coordinate System" (mapping pixels
 
 
 class DataCube:
-    """"Manages a 3D FITS datacube (filter, y, x).
+    """ "Manages a 3D FITS datacube (filter, y, x).
 
     Reads all metadata (filters, WCS, dimensions) from the FITS file header.
     FITS = (Flexible Image Transport System).
@@ -70,7 +70,7 @@ class DataCube:
         Returns:
             Tuple of (mean_spectrum, std_spectrum), each 1D with n_channels elements.
         """
-        pixels = self.data[:, mask] # Returns the pixels where the mask is True.
+        pixels = self.data[:, mask]  # Returns the pixels where the mask is True.
         # Calculate average and standard deviation, ignoring NaN values.
         mean = np.nanmean(pixels, axis=1)
         std = np.nanstd(pixels, axis=1)

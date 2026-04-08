@@ -1,12 +1,13 @@
 """
 Clump Catalog Module
 --------------------
-Handles the representation, spatial mapping, and geometric boundaries 
+Handles the representation, spatial mapping, and geometric boundaries
 of detected clumps (e.g., star-forming regions in a galaxy).
 """
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -29,6 +30,7 @@ class ClumpProperties:
         inside: Boolean flag (e.g., if the clump is within a specific galactic radius).
         component: Structural classification (e.g., 'disk', 'bulge', 'outlier').
     """
+
     clump_id: int
     area_pix: int
     area_arcsec2: float
@@ -66,7 +68,7 @@ class ClumpCatalog:
         self.X0_KEY: str = "x0"
         self.Y0_KEY: str = "y0"
         self.AREA_KPC2_KEY: str = "area_kpc2"
-        self.R_EFF_KPC2_KEY: str = "r_eff_kpc2"
+        self.R_EFF_KPC2_KEY: str = "r_eff_kpc"
         self.INSIDE_KEY: str = "inside"
         self.COMPONENT_KEY: str = "component"
 
@@ -120,7 +122,7 @@ class ClumpCatalog:
         """Get a 2D boolean array where True represents the clump area."""
         return self._pixels_masks[clump_id]
 
-    def get_combined_masks(self, clump_ids: list[int]) -> np.ndarray:
+    def get_combined_mask(self, clump_ids: list[int]) -> np.ndarray:
         """Merges multiple clumps into a single boolean mask using bitwise OR."""
         mask = np.zeros(self.shape, dtype=bool)
         for cid in clump_ids:
@@ -150,14 +152,14 @@ class ClumpCatalog:
         # Handle edge case: small clumps cannot form a hull
         if len(xs) < 3:
             coords = list(zip(xs.astype(float), ys.astype(float), strict=True))
-            coords.append(coords[0]) # Close the loop in the graph, making it cyclic.
+            coords.append(coords[0])  # Close the loop in the graph, making it cyclic.
             self._boundaries[clump_id] = coords
             return coords
 
         points = np.column_stack([xs, ys])
         try:
             # https://www.geeksforgeeks.org/dsa/convex-hull-algorithm/
-            hull = ConvexHull(points) # smallest convex polygon that encloses all of the points.
+            hull = ConvexHull(points)  # smallest convex polygon that encloses all of the points.
             verts = hull.vertices
             # Order vertices to form a continuous polygon path
             coords = [(float(points[v, 0]), float(points[v, 1])) for v in verts]
@@ -188,17 +190,14 @@ class ClumpCatalog:
 
         Example: catalog.filter_clumps(component='disk', inside=True)
         """
-        filtered_clumps_list = self.list_clumps()
-        for clump in filtered_clumps_list:
-            if (
-                (component is not None and clump.component != component)
-                or
-                (inside is not None and clump.inside != inside)
-            ):
-                filtered_clumps_list.remove(clump)
-        return filtered_clumps_list
+        filtered_clump_list = self.list_clumps()
+        if component is not None:
+            filtered_clump_list = [c for c in filtered_clump_list if c.component == component]
+        if inside is not None:
+            filtered_clump_list = [c for c in filtered_clump_list if c.inside == inside]
+        return filtered_clump_list
 
-    def to_properties_list(self):
+    def to_properties_list(self) -> list[dict[str, Any]]:
         """Return all clump properties as a list of dicts for JSON serialization."""
         return [
             {
@@ -211,6 +210,7 @@ class ClumpCatalog:
                 self.AREA_KPC2_KEY: c.area_kpc2,
                 self.R_EFF_KPC2_KEY: c.r_eff_kpc2,
                 self.INSIDE_KEY: c.inside,
-                self.COMPONENT_KEY: c.component
-            } for c in self.list_clumps()
+                self.COMPONENT_KEY: c.component,
+            }
+            for c in self.list_clumps()
         ]
