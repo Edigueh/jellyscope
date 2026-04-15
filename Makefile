@@ -1,4 +1,4 @@
-.PHONY: install lint lint-fix format format-check typecheck test test-fast check spellcheck serve clean
+.PHONY: install lint lint-fix format format-check typecheck test test-fast check spellcheck serve serve-dev clean
 
 # Install all dependencies including dev
 install:
@@ -44,6 +44,10 @@ spellcheck:
 # Start the development server
 serve:
 	uv run jellyscope --data-dir data
+
+# Start with auto-reload (development)
+serve-dev:
+	uv run uvicorn jellyscope.web:create_app --factory --reload --host 127.0.0.1 --port 5000
 
 # Clean build artifacts
 clean:

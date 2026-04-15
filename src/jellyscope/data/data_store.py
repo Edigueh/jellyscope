@@ -2,9 +2,9 @@
 
 from pathlib import Path
 
-from ..config import JellyscopeConfig
-from .model.clumps import ClumpCatalog
-from .model.datacube import DataCube
+from jellyscope.config import JellyscopeConfig
+from jellyscope.data.model.clumps import ClumpCatalog
+from jellyscope.data.model.datacube import DataCube
 
 
 class DataStore:

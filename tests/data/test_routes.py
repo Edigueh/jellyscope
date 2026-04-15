@@ -1,7 +1,7 @@
 """Tests for Flask routes."""
 
-from flask import Flask
+from fastapi import FastAPI
 
 
-def test_routes(app: Flask):
-    assert app.config["TESTING"]
+def test_routes(app: FastAPI):
+    assert app.title == "Jellyscope"

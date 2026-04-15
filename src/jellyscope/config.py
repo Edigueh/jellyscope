@@ -1,7 +1,8 @@
 """Application configuration."""
 
-from dataclasses import dataclass, field
 from pathlib import Path
+
+from pydantic import BaseModel, Field
 
 # JWST NIRCam filter central wavelengths in microns.
 # https://jwst-docs.stsci.edu/jwst-near-infrared-camera/nircam-instrumentation/nircam-filters
@@ -29,15 +30,14 @@ NIRCAM_WAVELENGTHS: dict[str, float] = {
 }
 
 
-@dataclass
-class JellyscopeConfig:
+class JellyscopeConfig(BaseModel):
     """Configuration for the Jellyscope application.
 
     The data_dir can point to a flat directory
     or contain subdirectories for multiple datasets.
     """
 
-    data_dir: Path = field(default_factory=lambda: Path("data"))
+    data_dir: Path = Field(default_factory=lambda: Path("data"))
     datacube_file: str = "cut_datacube_nircam.fits"
     datacube_matched_file: str = "cut_datacube_nircam_matched.fits"
     clumps_properties_file: str = "clumps_properties.csv"
@@ -46,4 +46,4 @@ class JellyscopeConfig:
     port: int = 5000
     debug: bool = True
     default_colorscale: str = "Viridis"
-    filter_wavelengths: dict[str, float] = field(default_factory=lambda: dict(NIRCAM_WAVELENGTHS))
+    filter_wavelengths: dict[str, float] = Field(default_factory=lambda: dict(NIRCAM_WAVELENGTHS))

@@ -3,7 +3,7 @@
 from pathlib import Path
 
 import pytest
-from flask import Flask
+from fastapi import FastAPI
 
 from jellyscope.config import JellyscopeConfig
 from jellyscope.data.data_store import DataStore
@@ -23,10 +23,8 @@ def store(config: JellyscopeConfig) -> "DataStore":
 
 
 @pytest.fixture
-def app(config: JellyscopeConfig) -> Flask:
+def app(config: JellyscopeConfig) -> FastAPI:
     from jellyscope.web import create_app
 
     DataStore.reset()
-    app: Flask = create_app(config)
-    app.config["TESTING"] = True
-    return app
+    return create_app(config)

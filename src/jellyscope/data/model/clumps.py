@@ -5,17 +5,16 @@ Handles the representation, spatial mapping, and geometric boundaries
 of detected clumps (e.g., star-forming regions in a galaxy).
 """
 
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
+from pydantic import BaseModel
 from scipy.spatial import ConvexHull, QhullError
 
 
-@dataclass
-class ClumpProperties:
+class ClumpProperties(BaseModel):
     """
     Container for the physical and geometric metadata of a single clump.
 

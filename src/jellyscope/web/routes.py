@@ -1,5 +1,5 @@
 """REST API endpoints and page routes."""
 
-from flask import Blueprint
+from fastapi import APIRouter
 
-bp = Blueprint("api", __name__)
+router = APIRouter()

@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Interactive visualization of JWST jellyfish galaxy datacubes"
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.11"
+requires-python = ">=3.13"
 authors = [
     {name = "André Schaidhauer Luckmann"},
 ]
@@ -16,7 +16,10 @@ dependencies = [
     "astropy>=6.0",
     "numpy>=1.26",
     "pandas>=2.1",
-    "flask>=3.0",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "jinja2>=3.1",
+    "pydantic>=2.9",
     "plotly>=5.18",
     "scipy>=1.12",
 ]
@@ -30,6 +33,7 @@ dev = [
     "pandas-stubs",
     "pre-commit",
     "codespell",
+    "httpx>=0.27",
 ]
 
 [project.scripts]
@@ -40,7 +44,7 @@ where = ["src"]
 
 [tool.ruff]
 line-length = 99
-target-version = "py311"
+target-version = "py313"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
@@ -81,7 +85,7 @@ ignore = [
     "T201",   # print is the CLI output mechanism
 ]
 "src/jellyscope/web/routes.py" = [
-    "ARG001", # Flask route params sometimes appear unused
+    "ARG001", # FastAPI path/query params sometimes appear unused
 ]
 
 [tool.ruff.lint.isort]
@@ -103,7 +107,7 @@ addopts = [
 ]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.13"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
@@ -119,6 +123,7 @@ module = [
     "astropy.*",
     "plotly.*",
     "scipy.*",
+    "uvicorn",
 ]
 ignore_missing_imports = true
 

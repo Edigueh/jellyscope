@@ -13,8 +13,11 @@ repos:
         additional_dependencies:
           - numpy>=1.26
           - pandas-stubs
-          - flask>=3.0
-        args: [--config-file=pyproject.toml, src/]
+          - fastapi>=0.115
+          - pydantic>=2.9
+          - httpx>=0.27
+          - uvicorn>=0.34
+        args: [--config-file=pyproject.toml, src]
         pass_filenames: false
 
   - repo: https://github.com/codespell-project/codespell
