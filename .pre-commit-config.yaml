@@ -36,3 +36,12 @@ repos:
       - id: check-added-large-files
         args: [--maxkb=500]
       - id: debug-statements
+
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest
+        entry: .venv/bin/python -m pytest --no-header -q
+        language: system
+        types: [python]
+        pass_filenames: false
