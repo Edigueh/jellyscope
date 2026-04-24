@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 from fastapi import FastAPI
+from starlette.testclient import TestClient
 
 from jellyscope.config import JellyscopeConfig
 from jellyscope.data.data_store import DataStore
@@ -28,3 +29,8 @@ def app(config: JellyscopeConfig) -> FastAPI:
 
     DataStore.reset()
     return create_app(config)
+
+
+@pytest.fixture
+def client(app: FastAPI) -> TestClient:
+    return TestClient(app)

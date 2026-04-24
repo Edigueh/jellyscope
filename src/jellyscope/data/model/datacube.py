@@ -26,6 +26,7 @@ class DataCube:
 
         self.n_channels, self.ny, self.nx = self.data.shape
         self.filter_names = self._read_filter_names()
+        self.name = filepath.stem
 
     def _read_filter_names(self) -> list[str]:
         """Read filter names from FITS header keys FILTER11...FILTERn."""

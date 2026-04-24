@@ -33,7 +33,7 @@ class ClumpProperties(BaseModel):
     clump_id: int
     area_pix: int
     area_arcsec2: float
-    r_eff_arcec: float
+    r_eff_arcsec: float
     x0: float
     y0: float
     area_kpc2: float
@@ -80,7 +80,7 @@ class ClumpCatalog:
                 clump_id=cid,
                 area_pix=int(row[self.AREA_PIX_KEY]),
                 area_arcsec2=float(row[self.AREA_ARCSEC2_KEY]),
-                r_eff_arcec=float(row[self.R_EFF_ARCSEC_KEY]),
+                r_eff_arcsec=float(row[self.R_EFF_ARCSEC_KEY]),
                 x0=float(row[self.X0_KEY]),
                 y0=float(row[self.Y0_KEY]),
                 area_kpc2=float(row[self.AREA_KPC2_KEY]),
@@ -160,7 +160,10 @@ class ClumpCatalog:
             # https://www.geeksforgeeks.org/dsa/convex-hull-algorithm/
             hull = ConvexHull(points)  # smallest convex polygon that encloses all of the points.
             verts = hull.vertices
-            # Order vertices to form a continuous polygon path
+
+            # verts contains indices of points on the outer edge.
+            # Interior points are excluded. Look up each index in the points
+            # array to get the actual (x, y) coordinates for the boundary polygon.
             coords = [(float(points[v, 0]), float(points[v, 1])) for v in verts]
             coords.append(coords[0])
         except QhullError:
@@ -203,7 +206,7 @@ class ClumpCatalog:
                 self.CLUMP_ID_KEY: c.clump_id,
                 self.AREA_PIX_KEY: c.area_pix,
                 self.AREA_ARCSEC2_KEY: c.area_arcsec2,
-                self.R_EFF_ARCSEC_KEY: c.r_eff_arcec,
+                self.R_EFF_ARCSEC_KEY: c.r_eff_arcsec,
                 self.X0_KEY: c.x0,
                 self.Y0_KEY: c.y0,
                 self.AREA_KPC2_KEY: c.area_kpc2,

@@ -34,7 +34,7 @@ test-fast:
 	uv run pytest --no-cov -x -q
 
 # Run ALL checks (what CI would run)
-check: lint format-check typecheck test
+check: lint format-check typecheck spellcheck test
 	@echo "All checks passed."
 
 # Spell check
