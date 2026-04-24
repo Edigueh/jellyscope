@@ -3,6 +3,12 @@
 from http import HTTPStatus
 
 
+def test_index_page(client):
+    resp = client.get("/")
+    assert resp.status_code == HTTPStatus.OK
+    assert b"Jellyscope" in resp.content
+
+
 def test_list_datacubes(client):
     resp = client.get("/api/datacubes")
     assert resp.status_code == HTTPStatus.OK

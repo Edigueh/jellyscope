@@ -2,7 +2,8 @@
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
+from starlette.responses import HTMLResponse, Response
 
 from jellyscope.data.data_store import DataStore
 from jellyscope.model.schemas import (
@@ -25,9 +26,21 @@ def _store() -> DataStore:
     return DataStore.get()
 
 
+# Pages.
+@router.get("/", response_class=HTMLResponse)
+def index(request: Request) -> Response:
+    store = _store()
+    return request.app.state.templates.TemplateResponse(  # type: ignore[no-any-return]
+        request,
+        "index.html",
+        {
+            "datacubes": store.list_datacubes(),
+            "filters": store.get_datacube("nircam").filter_names,
+        },
+    )
+
+
 # Datacube info.
-
-
 @router.get("/api/datacubes", response_model=DatacubesResponse)
 def list_datacubes() -> DatacubesResponse:
     store = _store()
