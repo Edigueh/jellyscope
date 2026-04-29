@@ -1,6 +1,6 @@
 # Frontend
 
-The Jellyscope frontend is a single-page application built with vanilla HTML, CSS, and JavaScript, using Plotly.js for all interactive visualizations. No frontend framework is needed — the entire controller is ~250 lines of JavaScript.
+The Jellyscope frontend is a single-page application built with vanilla HTML, CSS, and JavaScript, using Plotly.js for all interactive visualizations. No frontend framework is needed.
 
 **Files covered**:
 
@@ -14,7 +14,7 @@ The Jellyscope frontend is a single-page application built with vanilla HTML, CS
 
 **Location**: `src/jellyscope/web/templates/index.html`
 
-This is a Jinja2 template rendered by Flask. It receives two variables from the server:
+This is a Jinja2 template rendered by FastAPI (via `Jinja2Templates`). It receives two variables from the server:
 
 - `datacubes`: list of available datacube names (e.g., `["nircam", "nircam_matched"]`)
 - `filters`: list of filter names (e.g., `["F070W", "F090W", ...]`)

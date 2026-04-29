@@ -5,7 +5,6 @@ The visualization layer builds Plotly figure dictionaries from data. These dicts
 **Files covered**:
 
 - [visualization/image_viewer.py](../src/jellyscope/visualization/image_viewer.py) — Galaxy heatmap + clump overlays
-- [visualization/spectrum_plot.py](../src/jellyscope/visualization/spectrum_plot.py) — SED line plots
 - [visualization/properties_panel.py](../src/jellyscope/visualization/properties_panel.py) — Property formatting
 
 ---
@@ -16,30 +15,46 @@ The visualization layer builds Plotly figure dictionaries from data. These dicts
 
 Builds the main galaxy image as a Plotly figure with three types of traces layered together: a heatmap (the image), boundary polygons (clump outlines), and centroid markers (clump labels).
 
-### `_asinh_stretch(data: np.ndarray) -> np.ndarray`
+### Stretch Functions
 
-**Private**. Applies arcsinh intensity stretch to a 2D image array.
+The module provides three intensity stretch functions, selectable via `_normalize_stretch()`. The default is `_log_stretch`.
 
-**Why arcsinh?** Astronomical images have extreme dynamic range — the galaxy core might be 1000x brighter than the faint tails. A linear colormap would render the tails as invisible black. The `arcsinh` function behaves like `log(x)` for large values but is defined at zero (unlike `log`), making it the standard choice in optical/IR astronomy.
+#### `_log_stretch(data: np.ndarray) -> np.ndarray` (default)
+
+Applies log stretch using astropy's `LogStretch(a=200)` after normalizing to the [10th, 99.98th] percentile range via `AsymmetricPercentileInterval`. This more aggressively boosts faint structure than arcsinh.
 
 **Algorithm**:
 
-1. Clip to [1st, 99.5th] percentile (removes outlier hot/cold pixels)
+1. Mask NaN and non-positive values
+2. Compute bounds via `AsymmetricPercentileInterval(10.0, 99.98)`
+3. Clip and normalize to [0, 1]
+4. Apply `log(200*x + 1) / log(201)`
+
+#### `_asinh_stretch(data: np.ndarray) -> np.ndarray`
+
+Applies arcsinh intensity stretch. Standard in optical/IR astronomy (SDSS, STScI).
+
+**Algorithm**:
+
+1. Clip to [2nd, 99.5th] percentile (removes outlier hot/cold pixels)
 2. Normalize to [0, 1]
-3. Apply `arcsinh(x * 10) / arcsinh(10)`
+3. Apply `arcsinh(x * 18) / arcsinh(18)`
 
-The factor of 10 controls the stretch intensity — higher values bring out more faint structure.
+The factor of 18 controls the stretch intensity — higher values bring out more faint structure.
 
-```python
-raw_slice = datacube.get_slice(7)         # Linear values
-stretched = _asinh_stretch(raw_slice)     # Values in [0, 1], faint features visible
-```
+#### `_power_stretch(data: np.ndarray) -> np.ndarray`
+
+Power stretch using astropy's `PowerStretch(a=0.5)`. Lower exponent = more aggressive on faint features. Uses [20th, 99.5th] percentile bounds.
+
+#### `_normalize_stretch(data, normalize_func=_log_stretch) -> np.ndarray`
+
+Dispatcher that applies the given stretch function. Defaults to `_log_stretch`.
 
 ---
 
-### `create_galaxy_heatmap(slice_data, filter_name, colorscale="Viridis") -> dict`
+### `create_galaxy_heatmap(slice_data, colorscale="viridis") -> dict`
 
-Creates a single Plotly `heatmap` trace for a 2D image slice.
+Creates a single Plotly `heatmap` trace for a 2D image slice. Internally applies `_normalize_stretch()` (log stretch by default).
 
 **Returns** a Plotly trace dict:
 
@@ -47,7 +62,7 @@ Creates a single Plotly `heatmap` trace for a 2D image slice.
 {
     "type": "heatmap",
     "z": [[0.12, 0.34, None, ...], ...],  # 2D array, None = transparent
-    "colorscale": "Viridis",
+    "colorscale": "viridis",
     "hoverongaps": False,                   # Don't show hover for None pixels
     "hovertemplate": "x: %{x}<br>y: %{y}<br>flux: %{z:.4f}<extra></extra>",
     "showscale": True,
@@ -154,68 +169,13 @@ Total traces: 1 (heatmap) + 23 (boundaries) + 1 (centroids) = **25 traces**.
 
 ---
 
-## visualization/spectrum_plot.py — SED Plots
-
-**Location**: `src/jellyscope/visualization/spectrum_plot.py`
-
-### `create_sed_figure(spectrum, title="Spectral Energy Distribution") -> dict`
-
-Creates a Plotly figure showing flux vs. wavelength (the SED).
-
-**Input `spectrum` dict** must have:
-
-- `wavelengths`: list of wavelengths in microns
-- `mean_flux` or `fluxes`: list of flux values
-- Optionally `std_flux`: list of standard deviations
-- Optionally `filter_names`: list of filter names for hover text
-
-**Main trace**: `scatter` with `lines+markers` mode, cyan color (`#00ccff`).
-
-**Error band** (if `std_flux` provided): A filled area trace showing +/- 1 standard deviation, rendered as a semi-transparent cyan band (`rgba(0, 204, 255, 0.15)`). This is created using the `fill: "toself"` technique where upper and lower bounds are concatenated into a single closed polygon.
-
-**Hover template**: Shows filter name, wavelength, and flux value:
-
-```plaintext
-F200W
-λ: 1.990 μm
-Flux: 3.4567e-01
-```
-
----
-
-### `create_multi_sed_figure(spectra, labels) -> dict`
-
-Overlays multiple SEDs for comparison, each in a different color.
-
-**Parameters**:
-
-| Param | Type | Description |
-| ------- | ------ | ------------- |
-| `spectra` | `list[dict]` | List of spectrum dicts |
-| `labels` | `list[str]` | Display name for each spectrum |
-
-**Color palette**: Cycles through 8 colors:
-
-1. `#00ccff` (cyan)
-2. `#ff4444` (red)
-3. `#44ff44` (green)
-4. `#ffaa00` (orange)
-5. `#ff44ff` (magenta)
-6. `#44ffff` (light cyan)
-7. `#ffff44` (yellow)
-8. `#aa44ff` (purple)
-
-The legend is shown (unlike single SED plots) so users can identify which curve belongs to which clump.
-
----
-
 ## visualization/properties_panel.py — Property Formatting
 
 **Location**: `src/jellyscope/visualization/properties_panel.py`
 
 ### `format_clump_properties(clump: ClumpProperties) -> dict`
 
-Converts a `ClumpProperties` dataclass into a human-readable display dict.
+Converts a `ClumpProperties` model into a human-readable display dict.
 
 **Returns**:
 

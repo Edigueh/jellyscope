@@ -6,7 +6,7 @@ Jellyscope lets you explore multi-filter NIRCam datacubes, select regions of gal
 
 ## Requirements
 
-- Python 3.11+
+- Python 3.13+
 - [uv](https://docs.astral.sh/uv/) package manager
 
 ## Installation
@@ -76,7 +76,7 @@ src/jellyscope/
 ├── data/               # FITS I/O, clump catalog, data store
 ├── analysis/           # Spectral extraction, statistics
 ├── visualization/      # Plotly figure builders
-├── web/                # Flask app, REST API, frontend
+├── web/                # FastAPI app, REST API, frontend
 └── cli.py              # Command-line entry point
 ```
 

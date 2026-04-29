@@ -13,25 +13,24 @@ Jellyscope follows a layered architecture where each layer only depends on layer
 └──────────────────────┬──────────────────────────┘
                        │ HTTP (JSON)
 ┌──────────────────────▼──────────────────────────┐
-│              Web Layer (Flask)                  │
-│  routes.py — 10 REST endpoints                  │
+│             Web Layer (FastAPI)                 │
+│  routes.py — 7 REST endpoints                   │
 │  templates/index.html — SPA page                │
 │  static/app.js — frontend controller            │
-└──────────┬──────────────────┬───────────────────┘
-           │                  │
-┌──────────▼──────────┐ ┌─────▼─────────────────┐
-│  Visualization      │ │  Analysis             │
-│  image_viewer.py    │ │  spectral.py          │
-│  spectrum_plot.py   │ │  statistics.py        │
-│  properties_panel.py│ │                       │
-└──────────┬──────────┘ └──────┬────────────────┘
-           │                   │
-┌──────────▼───────────────────▼──────────────────┐
+└──────────┬──────────────────────────────────────┘
+           │
+┌──────────▼──────────┐
+│  Visualization      │
+│  image_viewer.py    │
+│  properties_panel.py│
+└──────────┬──────────┘
+           │
+┌──────────▼──────────────────────────────────────┐
 │                Data Layer                       │
-│  cache.py    — DataStore singleton              │
-│  fits_handler.py — DataCube (FITS I/O)          │
-│  clumps.py   — ClumpCatalog (CSV + masks)       │
-│  config.py   — JellyscopeConfig                 │
+│  data_store.py    — DataStore singleton         │
+│  model/datacube.py — DataCube (FITS I/O)        │
+│  model/clumps.py  — ClumpCatalog (CSV + masks)  │
+│  config.py        — JellyscopeConfig            │
 └──────────────────────┬──────────────────────────┘
                        │
 ┌──────────────────────▼──────────────────────────┐
@@ -48,32 +47,32 @@ This is the complete path that data travels from a FITS file on disk to a pixel 
 1. FITS file on disk
    │  cut_datacube_nircam.fits (20 x 221 x 172, float64)
    │
-2. DataCube.__init__()                    [fits_handler.py:17]
+2. DataCube.__init__()                    [data/model/datacube.py]
    │  astropy.io.fits.open() → reads data array + header + WCS
    │  Parses FILTER1..FILTER20 from header → filter_names list
    │
-3. DataStore.__init__()                   [cache.py:19]
+3. DataStore.__init__()                   [data/data_store.py]
    │  Loads both datacubes + ClumpCatalog into memory (~12MB total)
    │  Singleton: loaded once at app startup, shared across requests
    │
-4. Flask request arrives
+4. FastAPI request arrives
    │  GET /api/viewer/nircam/7?selected=0,3
    │
-5. routes.get_viewer_figure()             [routes.py:60]
+5. routes.get_viewer_figure()             [web/routes.py]
    │  Parses URL params → calls build_viewer_figure()
    │
-6. build_viewer_figure()                  [image_viewer.py:94]
-   │  a) DataCube.get_slice(7) → 2D numpy array (221 x 172)
-   │  b) _asinh_stretch() → normalize + arcsinh to handle dynamic range
+6. build_viewer_figure()                  [visualization/image_viewer.py]
+   │  a) DataCube.get_slice_by_channel_index(7) → 2D numpy array (221 x 172)
+   │  b) _log_stretch() → normalize + log stretch to handle dynamic range
    │  c) create_galaxy_heatmap() → Plotly heatmap trace dict
    │  d) create_clump_boundary_traces() → 23 scatter traces (polygons)
    │  e) create_centroid_markers() → scatter trace with clump labels
    │  f) Assembles {data: [...], layout: {...}} Plotly figure dict
    │
-7. Flask jsonify()
+7. FastAPI JSON response
    │  Python dict → JSON string → HTTP response
    │
-8. Browser fetch() in app.js              [app.js:63]
+8. Browser fetch() in app.js              [web/static/app.js]
    │  Receives JSON → Plotly.react(viewer, fig.data, fig.layout)
    │
 9. Plotly.js renders
@@ -92,7 +91,7 @@ Browser                          Server
 plotly_click event
  → extract (x, y) from point
  │
- ├── GET /api/pixel/{x}/{y}/clump ─────→ ClumpCatalog.get_clump_at_pixel(x, y)
+ ├── GET /api/pixel/{x}/{y}/clump ─────→ ClumpCatalog.get_clump_id_at_pixel(x, y)
  │                                        Uses _clump_map[y, x] → O(1) lookup
  ←── { "clump_id": 4 } ───────────────┘
  │
@@ -100,14 +99,9 @@ plotly_click event
  │                                      get_boundary_coords(4)
  ←── { properties: {...}, boundary: [...] }
  │
- ├── GET /api/clumps/4/spectrum/nircam → extract_clump_spectrum()
- │                                       DataCube.get_mean_spectrum_for_mask(mask)
- ←── { spectrum: {...}, figure: {...} }
- │
  └── Updates UI:
      1. Properties panel → HTML table
-     2. Spectrum plot → Plotly SED chart
-     3. Viewer → re-renders with clump highlighted (red border)
+     2. Viewer → re-renders with clump highlighted (red border)
 ```
 
 ### Flow 2: Change Filter (Slider)
@@ -126,59 +120,26 @@ slider input event
  └── Plotly.react() → updates heatmap, keeps boundaries intact
 ```
 
-### Flow 3: Lasso/Rectangle Selection
-
-```plaintext
-Browser                          Server
-───────                          ──────
-User sets mode to "Lasso" or "Rect"
- → Plotly.relayout(viewer, {dragmode: "lasso"})
-
-User draws selection on image
- → plotly_selected event
- → extract pixel coords from selected points
- │
- └── POST /api/region/spectrum/nircam ──→ Build boolean mask from pixel list
-     body: { pixels: [[x1,y1], ...] }     extract_region_spectrum(datacube, mask)
-                                           nanmean over masked pixels per channel
- ←── { spectrum: {...}, figure: {...} } ┘
- │
- └── Updates spectrum plot with region SED
-```
-
-### Flow 4: Multi-Clump Comparison
-
-```plaintext
-Browser                          Server
-───────                          ──────
-User clicks clump 0, then clump 3, then clump 4
- → state.selectedClumps = Set(0, 3, 4)
- │
- └── POST /api/compare/spectrum/nircam ──→ For each clump_id:
-     body: { clump_ids: [0, 3, 4] }        extract_clump_spectrum()
-                                           create_multi_sed_figure(spectra, labels)
- ←── { figure: {...}, spectra: [...] } ──┘
- │
- └── Spectrum plot shows 3 overlaid SED curves with different colors
-```
-
 ## Key Technical Decisions
 
-### 1. Arcsinh Stretch for Image Display
+### 1. Log Stretch for Image Display
 
 **Problem**: Astronomical images have extreme dynamic range. Raw pixel values span several orders of magnitude, so a linear colormap shows only the brightest features.
 
-**Solution**: Apply `arcsinh(x * 10) / arcsinh(10)` after normalizing to the [1st, 99.5th] percentile range. This is the standard astronomical stretch used by SDSS, STScI, and most optical/IR survey viewers.
+**Solution**: Apply `LogStretch(a=200)` from astropy after normalizing to the [10th, 99.98th] percentile range. The `_log_stretch` function uses `AsymmetricPercentileInterval` for robust bounds and maps `f(x) = log(a*x + 1) / log(a + 1)`. This more aggressively boosts faint structure than arcsinh stretch.
 
-**Location**: [image_viewer.py:9-21](../src/jellyscope/visualization/image_viewer.py)
+**Location**: [image_viewer.py](../src/jellyscope/visualization/image_viewer.py)
 
 ```python
-def _asinh_stretch(data):
-    vmin = np.percentile(finite, 1)
-    vmax = np.percentile(finite, 99.5)
+def _log_stretch(data):
+    interval = AsymmetricPercentileInterval(10.0, 99.98)
+    vmin, vmax = interval.get_limits(valid)
     normalized = (clipped - vmin) / (vmax - vmin + 1e-10)
-    return np.arcsinh(normalized * 10) / np.arcsinh(10)
+    stretch = LogStretch(a=200)
+    return stretch(normalized)
 ```
+
+Alternative stretch functions `_asinh_stretch` (factor=18, 2nd–99.5th percentile) and `_power_stretch` (PowerStretch a=0.5) are also available.
 
 ### 2. O(1) Pixel-to-Clump Lookup with `_clump_map`
 
@@ -186,13 +147,12 @@ def _asinh_stretch(data):
 
 **Solution**: Pre-build a 2D integer array `_clump_map` of shape `(ny, nx)` where each cell stores a `clump_id` or `-1`. This gives constant-time pixel-to-clump lookup.
 
-**Location**: [clumps.py:60](../src/jellyscope/data/clumps.py)
+**Location**: [model/clumps.py](../src/jellyscope/data/model/clumps.py)
 
 ```python
 self._clump_map = np.full((self.ny, self.nx), -1, dtype=np.int32)
-# ... fill during initialization ...
 
-def get_clump_at_pixel(self, x, y):
+def get_clump_id_at_pixel(self, x, y):
     val = self._clump_map[y, x]
     return int(val) if val >= 0 else None
 ```
@@ -207,9 +167,8 @@ def get_clump_at_pixel(self, x, y):
 
 **Locations**:
 
-- [fits_handler.py:78-84](../src/jellyscope/data/fits_handler.py) — `to_json_slice()`
-- [image_viewer.py:31-33](../src/jellyscope/visualization/image_viewer.py) — heatmap z values
-- [spectral.py:24](../src/jellyscope/analysis/spectral.py) — spectrum fluxes
+- [model/datacube.py](../src/jellyscope/data/model/datacube.py) — `to_json_slice()`
+- [image_viewer.py](../src/jellyscope/visualization/image_viewer.py) — heatmap z values
 
 ### 4. DataStore Singleton Pattern
 
@@ -217,12 +176,14 @@ def get_clump_at_pixel(self, x, y):
 
 **Solution**: The `DataStore` class uses a class-level singleton (`_instance`). It's initialized once during `create_app()` and all requests access the same in-memory data via `DataStore.get()`.
 
-**Location**: [cache.py:46-52](../src/jellyscope/data/cache.py)
+**Location**: [data_store.py](../src/jellyscope/data/data_store.py)
 
 ```python
 @classmethod
 def get(cls, config=None):
     if cls._instance is None:
+        if config is None:
+            config = JellyscopeConfig()
         cls._instance = cls(config)
     return cls._instance
 ```
@@ -233,7 +194,7 @@ def get(cls, config=None):
 
 **Problem**: Should Plotly figures be built on the server (Python) or the client (JavaScript)?
 
-**Decision**: Server-side. The Flask API returns complete Plotly figure dicts `{data: [...], layout: {...}}`, and the browser just calls `Plotly.react(element, fig.data, fig.layout)`.
+**Decision**: Server-side. The FastAPI API returns complete Plotly figure dicts `{data: [...], layout: {...}}`, and the browser just calls `Plotly.react(element, fig.data, fig.layout)`.
 
 **Rationale**:
 
@@ -248,32 +209,27 @@ def get(cls, config=None):
 
 **Decision**: Use `scipy.spatial.ConvexHull` to compute the convex hull of each clump's pixel coordinates, then render the hull vertices as a closed polygon.
 
-**Location**: [clumps.py:94-123](../src/jellyscope/data/clumps.py)
+**Location**: [model/clumps.py](../src/jellyscope/data/model/clumps.py)
 
 **Trade-off**: Convex hulls don't capture concave clump shapes. For small clumps (5-144 pixels in current data), this is visually acceptable. For more complex shapes, this could be replaced with alpha-shapes or contour tracing.
 
 ## Module Dependency Graph
 
 ```plaintext
-config.py (no dependencies — pure dataclass)
+config.py (no dependencies — Pydantic BaseModel)
     ↑
-fits_handler.py (imports: astropy, numpy)
+model/datacube.py (imports: astropy, numpy)
     ↑
-clumps.py (imports: pandas, numpy, scipy)
+model/clumps.py (imports: pandas, numpy, scipy, pydantic)
     ↑
-cache.py (imports: config, fits_handler, clumps)
+data_store.py (imports: config, model/datacube, model/clumps)
     ↑
-    ├── spectral.py (imports: config, fits_handler, clumps)
-    ├── statistics.py (imports: fits_handler, clumps)
+    ├── image_viewer.py (imports: data_store/DataCube, model/clumps)
+    ├── properties_panel.py (imports: model/clumps)
     │       ↑
-    ├── image_viewer.py (imports: fits_handler, clumps)
-    ├── spectrum_plot.py (no internal imports)
-    ├── properties_panel.py (imports: clumps)
-    │       ↑
-    └── routes.py (imports: cache, spectral, statistics, image_viewer,
-                           spectrum_plot, properties_panel)
+    └── routes.py (imports: data_store, image_viewer, properties_panel, schemas)
             ↑
-        web/__init__.py (imports: config, cache, routes)
+        web/__init__.py (imports: config, data_store, routes)
             ↑
         cli.py (imports: config, web)
 ```

@@ -1,13 +1,13 @@
 # Data Layer
 
-The data layer is the foundation of Jellyscope. It handles loading FITS datacubes, managing the clump catalog, and keeping everything cached in memory for fast access. All modules in this layer have zero dependencies on higher layers (analysis, visualization, web), so they can be used as standalone libraries.
+The data layer is the foundation of Jellyscope. It handles loading FITS datacubes, managing the clump catalog, and keeping everything cached in memory for fast access. All modules in this layer have zero dependencies on higher layers (visualization, web), so they can be used as standalone libraries.
 
 **Files covered**:
 
 - [config.py](../src/jellyscope/config.py) — Application configuration
-- [data/fits_handler.py](../src/jellyscope/data/fits_handler.py) — FITS datacube I/O
-- [data/clumps.py](../src/jellyscope/data/clumps.py) — Clump catalog management
-- [data/cache.py](../src/jellyscope/data/cache.py) — In-memory data store
+- [data/data_store.py](../src/jellyscope/data/data_store.py) — In-memory data store
+- [data/model/datacube.py](../src/jellyscope/data/model/datacube.py) — FITS datacube I/O
+- [data/model/clumps.py](../src/jellyscope/data/model/clumps.py) — Clump catalog management
 
 ---
 
@@ -33,20 +33,19 @@ The naming convention (`F` + wavelength in nm + `W`/`M`) follows JWST standard: 
 
 ### `JellyscopeConfig`
 
-Python dataclass holding all application settings. Every field has a sensible default, so `JellyscopeConfig()` works out of the box with the toy data.
+Pydantic `BaseModel` holding all application settings. Every field has a sensible default, so `JellyscopeConfig()` works out of the box with the toy data.
 
 ```python
-@dataclass
-class JellyscopeConfig:
-    data_dir: Path           # Root directory for data files (default: "data")
-    datacube_file: str       # Primary datacube filename (default: "cut_datacube_nircam.fits")
-    datacube_matched_file: str  # PSF-matched datacube (default: "cut_datacube_nircam_matched.fits")
-    clumps_properties_file: str # Clump properties CSV (default: "clumps_properties.csv")
-    clumps_pixels_file: str    # Clump pixel coordinates CSV (default: "clumps_pixels.csv")
-    host: str                # Flask server host (default: "127.0.0.1")
-    port: int                # Flask server port (default: 5000)
-    debug: bool              # Flask debug mode (default: True)
-    default_colorscale: str  # Plotly colorscale name (default: "Viridis")
+class JellyscopeConfig(BaseModel):
+    data_dir: Path               # Root directory for data files (default: "data")
+    datacube_file: str           # Primary datacube filename (default: "cut_datacube_nircam.fits")
+    datacube_matched_file: str   # PSF-matched datacube (default: "cut_datacube_nircam_matched.fits")
+    clumps_properties_file: str  # Clump properties CSV (default: "clumps_properties.csv")
+    clumps_pixels_file: str      # Clump pixel coordinates CSV (default: "clumps_pixels.csv")
+    host: str                    # Server host (default: "127.0.0.1")
+    port: int                    # Server port (default: 5000)
+    debug: bool                  # Debug mode (default: True)
+    default_colorscale: str      # Plotly colorscale name (default: "Viridis")
     filter_wavelengths: dict[str, float]  # Filter → wavelength mapping (default: NIRCAM_WAVELENGTHS)
 ```
 
@@ -65,9 +64,9 @@ config = JellyscopeConfig(data_dir=Path("/data/galaxy_jw2736"))
 
 ---
 
-## data/fits_handler.py — DataCube
+## data/model/datacube.py — DataCube
 
-**Location**: `src/jellyscope/data/fits_handler.py`
+**Location**: `src/jellyscope/data/model/datacube.py`
 
 The `DataCube` class wraps a single 3D FITS file. It reads all metadata from the FITS header — nothing is hardcoded — so it works with any datacube that follows the `(n_channels, ny, nx)` shape convention with `FILTER1..FILTERn` header keys.
 
@@ -115,12 +114,12 @@ Returns `(n_channels, ny, nx)`. Same as `self.data.shape`.
 
 Returns `(ny, nx)`. Used when creating boolean masks of matching dimensions.
 
-#### `get_slice(channel_index: int) -> np.ndarray`
+#### `get_slice_by_channel_index(channel_index: int) -> np.ndarray`
 
 Returns a 2D array `(ny, nx)` for one filter channel.
 
 ```python
-f200w_image = dc.get_slice(7)  # F200W is channel index 7
+f200w_image = dc.get_slice_by_channel_index(7)  # F200W is channel index 7
 print(f200w_image.shape)       # (221, 172)
 ```
 
@@ -128,7 +127,7 @@ print(f200w_image.shape)       # (221, 172)
 
 #### `get_slice_by_name(filter_name: str) -> np.ndarray`
 
-Same as `get_slice()` but accepts a filter name string.
+Same as `get_slice_by_channel_index()` but accepts a filter name string.
 
 ```python
 image = dc.get_slice_by_name("F200W")
@@ -173,15 +172,15 @@ z = dc.to_json_slice(7)  # For Plotly heatmap "z" parameter
 
 ---
 
-## data/clumps.py — Clump Catalog
+## data/model/clumps.py — Clump Catalog
 
-**Location**: `src/jellyscope/data/clumps.py`
+**Location**: `src/jellyscope/data/model/clumps.py`
 
 Manages detected clumps: their physical properties, pixel memberships, and polygon boundaries. The core optimization is the `_clump_map` — a 2D integer array that provides O(1) pixel-to-clump lookup.
 
-### Dataclass: `ClumpProperties`
+### Model: `ClumpProperties`
 
-Stores the physical properties of one detected clump. Each field comes directly from a column in `clumps_properties.csv`.
+Pydantic `BaseModel` storing the physical properties of one detected clump. Each field comes directly from a column in `clumps_properties.csv`.
 
 | Field | Type | Description | Example |
 | ------- | ------ | ------------- | --------- |
@@ -192,7 +191,7 @@ Stores the physical properties of one detected clump. Each field comes directly 
 | `x0` | `float` | Centroid x (pixel coords) | `115.28` |
 | `y0` | `float` | Centroid y (pixel coords) | `159.15` |
 | `area_kpc2` | `float` | Area in kpc² | `1.1165` |
-| `r_eff_kpc` | `float` | Effective radius in kpc | `0.5961` |
+| `r_eff_kpc2` | `float` | Effective radius in kpc | `0.5961` |
 | `inside` | `bool` | `True` if within galaxy disk | `True` |
 | `component` | `str` | `"disk"` or `"outside"` | `"disk"` |
 
@@ -226,16 +225,16 @@ catalog = ClumpCatalog(
 | Attribute | Type | Description |
 | ----------- | ------ | ------------- |
 | `clumps` | `dict[int, ClumpProperties]` | Clump ID → properties |
-| `_pixel_masks` | `dict[int, np.ndarray]` | Clump ID → boolean mask `(ny, nx)` |
+| `_pixels_masks` | `dict[int, np.ndarray]` | Clump ID → boolean mask `(ny, nx)` |
 | `_clump_map` | `np.ndarray (int32)` | Shape `(ny, nx)`, each cell = clump_id or `-1` |
 | `_boundaries` | `dict[int, list[tuple]]` | Cached boundary polygons (computed lazily) |
 
-#### `get_clump(clump_id: int) -> ClumpProperties`
+#### `get_clump_by_id(clump_id: int) -> ClumpProperties`
 
 Returns the properties for a single clump.
 
 ```python
-c = catalog.get_clump(4)
+c = catalog.get_clump_by_id(4)
 print(c.component)   # "disk"
 print(c.area_kpc2)   # 1.1165
 ```
@@ -258,16 +257,16 @@ mask = catalog.get_combined_mask([0, 3, 4])
 # mask is True wherever any of the 3 clumps have pixels
 ```
 
-#### `get_clump_at_pixel(x: int, y: int) -> int | None`
+#### `get_clump_id_at_pixel(x: int, y: int) -> int | None`
 
 O(1) lookup. Returns the `clump_id` at pixel `(x, y)`, or `None` if the pixel doesn't belong to any clump.
 
 ```python
-catalog.get_clump_at_pixel(72, 20)   # → 0  (clump 0 is here)
-catalog.get_clump_at_pixel(0, 0)     # → None (no clump)
+catalog.get_clump_id_at_pixel(72, 20)   # → 0  (clump 0 is here)
+catalog.get_clump_id_at_pixel(0, 0)     # → None (no clump)
 ```
 
-**How it works**: Simply reads `self._clump_map[y, x]`.
+**How it works**: Simply reads `self._clump_map[y, x]`. Also checks bounds first.
 
 #### `get_boundary_coords(clump_id: int) -> list[tuple[float, float]]`
 
@@ -283,7 +282,7 @@ boundary = catalog.get_boundary_coords(4)
 **Edge cases**:
 
 - Clumps with < 3 pixels: returns a simple polygon of the pixel coordinates
-- ConvexHull failure: falls back to listing all pixel coordinates
+- `QhullError` (collinear points): falls back to listing all pixel coordinates
 
 #### `get_all_boundaries() -> dict[int, list[tuple[float, float]]]`
 
@@ -309,9 +308,9 @@ Returns all clump properties as a list of JSON-serializable dicts.
 
 ---
 
-## data/cache.py — DataStore
+## data/data_store.py — DataStore
 
-**Location**: `src/jellyscope/data/cache.py`
+**Location**: `src/jellyscope/data/data_store.py`
 
 The `DataStore` is a singleton that holds all loaded datacubes and the clump catalog in memory. It's initialized once at application startup and shared across all HTTP requests.
 
@@ -331,7 +330,7 @@ store = DataStore(JellyscopeConfig())
 2. Loads `nircam_matched` datacube from `config.data_dir / config.datacube_matched_file`
 3. Creates `ClumpCatalog` using the `nircam` datacube's spatial shape as reference
 
-Files that don't exist on disk are silently skipped (so you can run with only one datacube).
+Files that don't exist on disk are silently skipped (so you can run with only one datacube). However, the `nircam` datacube is required — a `FileNotFoundError` is raised if it's missing.
 
 #### `get_datacube(name: str) -> DataCube`
 
@@ -352,12 +351,16 @@ Returns names of all loaded datacubes.
 store.list_datacubes()  # ["nircam", "nircam_matched"]
 ```
 
+#### `get_datacubes() -> dict[str, DataCube]`
+
+Returns the full dict of name → DataCube mappings.
+
 #### `get(config=None) -> DataStore` (classmethod)
 
 Singleton accessor. Creates the instance on first call, returns it on subsequent calls.
 
 ```python
-# In Flask routes:
+# In FastAPI routes:
 store = DataStore.get()  # Always returns the same instance
 ```
 

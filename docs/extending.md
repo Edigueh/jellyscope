@@ -79,8 +79,8 @@ Create a new file in `src/jellyscope/analysis/`:
 """Color-magnitude diagram analysis."""
 
 import numpy as np
-from ..data.fits_handler import DataCube
-from ..data.clumps import ClumpCatalog
+from ..data.model.datacube import DataCube
+from ..data.model.clumps import ClumpCatalog
 
 
 def compute_clump_colors(
@@ -151,19 +151,19 @@ def create_cmd_figure(data: list[dict]) -> dict:
 In `routes.py`, add:
 
 ```python
-@bp.route("/api/cmd/<datacube_name>")
+@router.get("/api/cmd/{datacube_name}")
 def get_color_magnitude(datacube_name: str):
     store = _store()
     dc = store.get_datacube(datacube_name)
-    blue = request.args.get("blue", "F150W")
-    red = request.args.get("red", "F444W")
 
-    from ..analysis.color_magnitude import compute_clump_colors
-    from ..visualization.color_magnitude_plot import create_cmd_figure
+    from jellyscope.analysis.color_magnitude import compute_clump_colors
+    from jellyscope.visualization.color_magnitude_plot import create_cmd_figure
 
+    blue = "F150W"
+    red = "F444W"
     data = compute_clump_colors(dc, store.clumps, blue, red)
     figure = create_cmd_figure(data)
-    return jsonify({"data": data, "figure": figure})
+    return {"data": data, "figure": figure}
 ```
 
 ### Step 4: Add to the frontend (optional)
@@ -185,21 +185,21 @@ async function showCMD() {
 All endpoints are in [routes.py](../src/jellyscope/web/routes.py). Follow this pattern:
 
 ```python
-@bp.route("/api/your-endpoint/<datacube_name>")
+@router.get("/api/your-endpoint/{datacube_name}")
 def your_endpoint(datacube_name: str):
     store = _store()                          # Get the DataStore singleton
     dc = store.get_datacube(datacube_name)    # Get the datacube
     # ... compute something ...
-    return jsonify({"result": ...})           # Return JSON
+    return {"result": ...}                    # Return dict (auto-serialized to JSON)
 ```
 
 **Conventions**:
 
 - Prefix all API routes with `/api/`
-- Use path parameters for required IDs: `/api/clumps/<int:clump_id>`
+- Use path parameters for required IDs: `/api/clumps/{clump_id}`
 - Use query parameters for optional filters: `?component=disk`
 - POST for requests with complex bodies (pixel lists, clump ID arrays)
-- Always return JSON via `jsonify()`
+- Return dicts or Pydantic response models (FastAPI handles JSON serialization)
 
 ---
 
