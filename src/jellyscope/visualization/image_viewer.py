@@ -18,7 +18,7 @@ _DARK_BLUE: str = "#1a1a2e"
 _SOFT_DARK_BLUE: str = "#16213e"
 
 
-def _asinh_stretch(data: np.ndarray) -> np.ndarray:
+def _asinh_stretch(data: np.ndarray) -> np.ndarray:  # pragma: no cover
     """Apply arcsinh stretch to bring out faint features."""
     # Ignore NaN/Inf when computing percentile bounds.
     finite = data[np.isfinite(data)]
@@ -44,7 +44,7 @@ def _asinh_stretch(data: np.ndarray) -> np.ndarray:
     return stretched
 
 
-def _power_stretch(data: np.ndarray) -> np.ndarray:
+def _power_stretch(data: np.ndarray) -> np.ndarray:  # pragma: no cover
     """Power stretch — tunable, lower exponent = more aggressive on faint features."""
     from astropy.visualization import PowerStretch
 

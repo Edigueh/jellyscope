@@ -101,9 +101,9 @@ docstring-code-format = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = [
-    "--cov=jellyscope",
+    "--cov=src/jellyscope",
     "--cov-report=term-missing",
-    "--cov-fail-under=90",
+    "--cov-fail-under=95",
 ]
 
 [tool.mypy]
