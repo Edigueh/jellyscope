@@ -1,5 +1,6 @@
 """Plotly figure builders for galaxy image viewing."""
 
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -17,7 +18,7 @@ _DARK_BLUE: str = "#1a1a2e"
 _SOFT_DARK_BLUE: str = "#16213e"
 
 
-def _normalize_stretch(data: np.ndarray) -> np.ndarray:
+def _asinh_stretch(data: np.ndarray) -> np.ndarray:
     """Apply arcsinh stretch to bring out faint features."""
     # Ignore NaN/Inf when computing percentile bounds.
     finite = data[np.isfinite(data)]
@@ -36,10 +37,70 @@ def _normalize_stretch(data: np.ndarray) -> np.ndarray:
     # arcsinh(x * 10) / arcsinh(10), is a non-linear mapping that compresses bright pixels
     # and boosts faint structure, making low-surface-brightness features, such as
     # jellyfish tails, visible without saturating bright regions.
-    stretched: np.ndarray = np.arcsinh(normalized * 10) / np.arcsinh(10)
+    factor: int = 18
+    stretched: np.ndarray = np.arcsinh(normalized * factor) / np.arcsinh(factor)
     # TODO: try new values and methods together with Andressa.
     # stretch = HistEqStretch(data=data[~np.logical_or(np.isnan(data), data <= 0.0)])
     return stretched
+
+
+def _power_stretch(data: np.ndarray) -> np.ndarray:
+    """Power stretch — tunable, lower exponent = more aggressive on faint features."""
+    from astropy.visualization import PowerStretch
+
+    finite = data[np.isfinite(data)]
+    if len(finite) == 0:
+        return data
+
+    vmin = np.percentile(finite, 20)
+    vmax = np.percentile(finite, 99.5)
+    clipped = np.clip(data, a_min=vmin, a_max=vmax)
+    normalized = (clipped - vmin) / (vmax - vmin + 1e-10)
+
+    stretch = PowerStretch(a=0.5)
+    stretched: np.ndarray = stretch(normalized)
+    return stretched
+
+
+def _log_stretch(data: np.ndarray) -> np.ndarray:
+    """Apply log stretch to bring out faint features."""
+    from astropy.visualization import AsymmetricPercentileInterval, LogStretch
+
+    finite = data[np.isfinite(data)]
+    if len(finite) == 0:
+        return data
+
+    # Mask NaN and non-positive values (log is undefined for x <= 0).
+    mask = np.logical_or(np.isnan(data), data <= 0.0)
+    valid = data[~mask]
+
+    if len(valid) == 0:
+        return data
+
+    interval = AsymmetricPercentileInterval(
+        lower_percentile=10.0,
+        upper_percentile=99.98,
+    )
+    vmin, vmax = interval.get_limits(valid)
+
+    clipped = np.clip(data, a_min=vmin, a_max=vmax)
+    normalized = (clipped - vmin) / (vmax - vmin + 1e-10)
+
+    # Log stretch: f(x) = log(a*x + 1) / log(a + 1)
+    # More aggressively boosts faint structure than arcsinh.
+    stretch = LogStretch(a=200)
+    stretched: np.ndarray = stretch(normalized)
+
+    return stretched
+
+
+def _normalize_stretch(
+    data: np.ndarray, normalize_func: Callable[[np.ndarray], np.ndarray] = _log_stretch
+) -> np.ndarray:
+    """Apply the given normalization stretch function to bring out faint features.
+    Defaults to LogStretch
+    """
+    return normalize_func(data)
 
 
 def create_galaxy_heatmap(
@@ -48,7 +109,7 @@ def create_galaxy_heatmap(
 ) -> dict[str, Any]:
     """Create a Plotly heatmap trace for a datacube slice."""
     z = []
-    for row in _normalize_stretch(data=slice_data):
+    for row in _normalize_stretch(data=slice_data, normalize_func=_log_stretch):
         z.append([None if np.isnan(v) else float(v) for v in row])
     return {
         "type": "heatmap",
