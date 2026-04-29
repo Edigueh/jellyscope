@@ -73,7 +73,7 @@
     </main>
 
     <script>
-        const FILTERS = {{ filters | tojson }};
+        const FILTERS = {{ filters | tojson | safe }};
     </script>
     <script src="{{ url_for('static', path='app.js') }}"></script>
 </body>
