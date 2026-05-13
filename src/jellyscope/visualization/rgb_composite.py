@@ -43,6 +43,12 @@ def lupton_rgb_composite(
     Returns:
         uint8 array of shape (ny, nx, 3) suitable for Plotly go.Image.
     """
+    # TODO: Arrumar a equação.
+    # Não faz sentido ter os filtros daquela forma.
+    # Limitar a escolha de filtros.
+    # Deixar 3 filtros pro azul por exemplo.
+    # Escolher os outros filtros a partir do primeiro.
+    # A partir da primeira escolha, restringir as próximas opções.
     intensity = (r_data + g_data + b_data) / 3.0
     m, sigma = _estimate_background(intensity)
     if alpha is None:
