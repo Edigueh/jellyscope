@@ -14,49 +14,56 @@ The Jellyscope frontend is a single-page application built with vanilla HTML, CS
 
 **Location**: `src/jellyscope/web/templates/index.html`
 
-This is a Jinja2 template rendered by FastAPI (via `Jinja2Templates`). It receives two variables from the server:
+This is a Jinja2 template rendered by FastAPI (via `Jinja2Templates`). It receives three variables from the server:
 
 - `datacubes`: list of available datacube names (e.g., `["nircam", "nircam_matched"]`)
 - `filters`: list of filter names (e.g., `["F070W", "F090W", ...]`)
+- `wavelengths`: dict mapping filter names to central wavelengths in µm
 
 ### Layout
 
 The page uses CSS Grid with two columns:
 
 ```plaintext
-┌──────────────────────────────────────────────────────────┐
-│  HEADER: "Jellyscope — JWST Jellyfish Galaxy Explorer"   │
-├──────────────────────────────┬───────────────────────────┤
-│                              │  PROPERTIES PANEL         │
-│  VIEWER CONTROLS             │  (clump info table)       │
-│  [Datacube ▼] [Slider]       ├───────────────────────────┤
-│  [Colors ▼] [Pan|Rect|Lasso] │  CLUMP LIST               │
-│                              │  (checkboxes with badges) │
-│  GALAXY VIEWER               │  [Filter: All ▼]          │
-│  (Plotly heatmap)            ├───────────────────────────┤
-│  172 x 221 px image          │  SPECTRUM PLOT (SED)      │
-│  with clump overlays         │  (Plotly line chart)      │
-│                              │                           │
-└──────────────────────────────┴───────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│  HEADER: "Jellyscope — JWST Jellyfish Galaxy Explorer"               │
+├────────────────────────────────────────┬─────────────────────────────┤
+│                                        │  PROPERTIES PANEL           │
+│  VIEWER CONTROLS                       │  (clump info table)         │
+│  [Datacube ▼] [Stretch ▼]             ├─────────────────────────────┤
+│  [Single|RGB] [Filter/RGB controls]    │  CLUMP LIST                 │
+│  [Pan|Rect|Lasso] [Centroids]          │  (checkboxes with badges)   │
+│                                        │  [Filter: All ▼]            │
+│  GALAXY VIEWER                         │                             │
+│  (Plotly heatmap or RGB image)         │                             │
+│  172 x 221 px image                    │                             │
+│  with clump overlays                   │                             │
+│                                        │                             │
+└────────────────────────────────────────┴─────────────────────────────┘
 ```
 
 Left column: `1fr` (flexible) — the galaxy viewer expands to fill available space.
-Right column: `360px` fixed — the three panels stack vertically.
+Right column: `360px` fixed — the panels stack vertically.
 
 ### Key HTML Elements
 
 | Element ID | Type | Purpose |
 | ----------- | ------ | --------- |
 | `datacube-select` | `<select>` | Choose between nircam / nircam_matched |
-| `filter-slider` | `<input type="range">` | Navigate 20 filter channels (0-19) |
-| `filter-label` | `<span>` | Shows current filter name (e.g., "F200W") |
-| `colorscale-select` | `<select>` | Viridis, Inferno, Plasma, Cividis, Hot, Greys |
+| `stretch-select` | `<select>` | Intensity stretch: Log, Asinh (Lupton), Power |
+| `btn-view-single` / `btn-view-rgb` | `<button>` | Toggle between single-band and RGB mode |
+| `filter-slider` | `<input type="range">` | Navigate 20 filter channels (0-19) — single mode only |
+| `colorscale-select` | `<select>` | Viridis, Inferno, Plasma, Cividis, Hot, Greys — single mode only |
+| `rgb-r` / `rgb-g` / `rgb-b` | `<select>` | Filter channel for each RGB band — RGB mode only |
+| `rgb-q` | `<input type="range">` | Softening (Q) parameter for Lupton stretch — RGB mode only |
+| `rgb-q-label` | `<span>` | Shows current Q value |
+| `filter-label` | `<span>` | Unified status: filter name (single) or R/G/B combo (RGB) |
 | `btn-click` / `btn-select` / `btn-lasso` | `<button>` | Interaction mode buttons |
-| `galaxy-viewer` | `<div>` | Plotly mounts the heatmap here |
+| `btn-centroids` | `<button>` | Toggle centroid markers visibility |
+| `galaxy-viewer` | `<div>` | Plotly mounts the figure here |
 | `properties-content` | `<div>` | Clump properties table or status message |
 | `clump-filter` | `<select>` | Filter clump list: All / Disk / Outside |
 | `clump-list` | `<div>` | Dynamic clump list with checkboxes |
-| `spectrum-plot` | `<div>` | Plotly mounts the SED chart here |
 
 ### Jinja2 Template Variables
 
@@ -69,10 +76,12 @@ Right column: `360px` fixed — the three panels stack vertically.
 <!-- Filter slider range from server -->
 <input type="range" min="0" max="{{ filters|length - 1 }}" value="7">
 
-<!-- Filter names passed to JavaScript -->
+<!-- Filter names and wavelengths passed to JavaScript -->
 <script>
     const FILTERS = {{ filters | tojson }};
     // → ["F070W", "F090W", ..., "F480M"]
+    const WAVELENGTHS = {{ wavelengths | tojson }};
+    // → {"F070W": 0.704, "F090W": 0.901, ...}
 </script>
 ```
 
@@ -92,8 +101,15 @@ const state = {
     channel: 7,                   // Current filter channel (default: F200W)
     selectedClumps: new Set(),    // Set of selected clump IDs
     colorscale: "Viridis",        // Current colorscale
+    stretch: "log",               // Intensity stretch function
     dragmode: "pan",              // Plotly interaction mode
     clumps: [],                   // Loaded clump list from API
+    showCentroids: false,         // Whether centroid markers are visible
+    viewMode: "single",           // "single" (heatmap) or "rgb" (composite)
+    rgbR: 19,                     // Red channel filter index (longest λ)
+    rgbG: 10,                     // Green channel filter index (middle λ)
+    rgbB: 0,                      // Blue channel filter index (shortest λ)
+    rgbQ: 8.0,                    // Lupton softening parameter
 };
 ```
 
@@ -102,14 +118,21 @@ const state = {
 ```plaintext
 DOMContentLoaded
     └── init()
-        ├── loadClumpList()    → GET /api/clumps → populate clump list
-        ├── renderViewer()     → GET /api/viewer/nircam/7 → render Plotly figure
+        ├── populateRGBSelects()  → fill R/G/B dropdowns with filter names + wavelengths
+        ├── loadClumpList()       → GET /api/clumps → populate clump list
+        ├── updateFilterLabel()   → set initial status label
+        ├── renderViewer()        → GET /api/viewer/... → render Plotly figure
         └── setupEventListeners()
-            ├── datacube-select → onChange → renderViewer()
-            ├── filter-slider   → onInput → update label + renderViewer()
-            ├── colorscale-select → onChange → renderViewer()
-            ├── mode buttons    → onClick → Plotly.relayout(dragmode)
-            └── clump-filter    → onChange → loadClumpList()
+            ├── datacube-select    → onChange → renderViewer()
+            ├── filter-slider      → onInput → updateFilterLabel() + renderViewer()
+            ├── colorscale-select  → onChange → renderViewer()
+            ├── stretch-select     → onChange → renderViewer()
+            ├── view-btn (Single/RGB) → onClick → updateViewModeUI() + renderViewer()
+            ├── rgb-r/g/b          → onChange → updateFilterLabel() + renderViewer()
+            ├── rgb-q              → onInput → debounced(renderViewer, 300ms)
+            ├── mode buttons       → onClick → Plotly.relayout(dragmode)
+            ├── btn-centroids      → onClick → toggle + renderViewer()
+            └── clump-filter       → onChange → loadClumpList()
 ```
 
 ### Function Reference
@@ -122,19 +145,41 @@ Async entry point. Called on `DOMContentLoaded`. Loads the clump list, renders t
 
 Attaches DOM event handlers to all control elements. Each handler updates `state` and triggers the appropriate re-render.
 
+#### `debounce(fn, ms)`
+
+Utility that delays function execution until `ms` milliseconds after the last invocation. Used for the Q slider to avoid flooding the API during drag.
+
+#### `populateRGBSelects()`
+
+Fills the R/G/B `<select>` dropdowns with filter options (name + wavelength labels). Sets default values: longest wavelength → R, middle → G, shortest → B.
+
+#### `updateFilterLabel()`
+
+Updates the `#filter-label` status indicator:
+- **Single mode**: shows `"F200W (1.99 µm)"`
+- **RGB mode**: shows `"R:F480M  G:F277W  B:F070W"`
+
+#### `updateViewModeUI()`
+
+Shows/hides the appropriate control group (`#single-controls` vs `#rgb-controls`) based on `state.viewMode`.
+
 #### `renderViewer()`
 
 The core render function. Fetches the Plotly figure from the API and renders it:
 
 ```plaintext
-1. Build URL: /api/viewer/{datacube}/{channel}?selected={ids}&colorscale={scale}
+1. If viewMode == "rgb":
+     Build URL: /api/viewer/{datacube}/rgb?r={R}&g={G}&b={B}&softening={Q}&selected={ids}
+   Else:
+     Build URL: /api/viewer/{datacube}/{channel}?selected={ids}&colorscale={scale}&stretch={stretch}
 2. fetch(url) → JSON response with figure dict
 3. Set figure.layout.dragmode = state.dragmode
-4. Plotly.react("galaxy-viewer", fig.data, fig.layout, plotlyConfig)
-5. Attach plotly_click and plotly_selected event handlers
+4. If !showCentroids → remove last trace (centroids) from data
+5. Plotly.react("galaxy-viewer", fig.data, fig.layout, plotlyConfig)
+6. Attach plotly_click event handler
 ```
 
-Called whenever: datacube changes, filter changes, colorscale changes, or clump selection changes.
+Called whenever: datacube changes, filter changes, colorscale changes, stretch changes, view mode changes, RGB channels change, Q slider moves (debounced), clump selection changes, or centroids toggled.
 
 #### `onViewerClick(eventData)`
 
@@ -302,4 +347,35 @@ Clumps are color-coded by component:
 ```css
 .clump-badge.disk    { color: #44ff44; border: 1px solid #44ff44; }
 .clump-badge.outside { color: #ffaa00; border: 1px solid #ffaa00; }
+```
+
+### View Mode Buttons and Toggle Buttons
+
+View mode (`Single` / `RGB`) and interaction mode buttons share styling patterns:
+
+```css
+.view-btn, .mode-btn, .toggle-btn {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    /* Active state: cyan background, black text */
+}
+.view-btn.active, .mode-btn.active, .toggle-btn.active {
+    background: var(--accent);
+    color: #000;
+}
+```
+
+### RGB Controls
+
+The Q slider and its label are styled to match the filter slider:
+
+```css
+#rgb-q {
+    width: 80px;
+    accent-color: var(--accent);
+}
+#rgb-q-label {
+    color: var(--accent);
+    font-weight: 600;
+}
 ```

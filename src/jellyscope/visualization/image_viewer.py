@@ -18,29 +18,46 @@ _DARK_BLUE: str = "#1a1a2e"
 _SOFT_DARK_BLUE: str = "#16213e"
 
 
-def _asinh_stretch(data: np.ndarray) -> np.ndarray:  # pragma: no cover
-    """Apply arcsinh stretch to bring out faint features."""
-    # Ignore NaN/Inf when computing percentile bounds.
+def _estimate_background(data: np.ndarray) -> tuple[float, float]:
+    """Estimate background level and noise via sigma-clipped statistics.
+
+    Returns (median, std) from sigma_clipped_stats.
+    """
+    from astropy.stats import sigma_clipped_stats
+
     finite = data[np.isfinite(data)]
-    if len(finite) == 0:
-        return data
+    if finite.size == 0:
+        return 0.0, 1.0
+    _, median, std = sigma_clipped_stats(finite, sigma=3.0, maxiters=5)
+    return float(median), float(std)
 
-    # Use 1st and 99.5th percentiles to define the dynamic range,
-    # trimming extreme outliers on both ends.
-    vmin = np.percentile(finite, 2)
-    vmax = np.percentile(finite, 99.5)
-    clipped = np.clip(data, a_min=vmin, a_max=vmax)
 
-    # Linearly scale to [0, 1] (epsilon avoids division by zero).
-    normalized = (clipped - vmin) / (vmax - vmin + 1e-10)
+def _lupton_asinh_stretch(
+    data: np.ndarray, softening: float = 8.0, alpha: float | None = None
+) -> np.ndarray:
+    """Lupton et al. (2004) asinh stretch: f(x) = arcsinh(alpha*Q*(x-m)) / Q.
 
-    # arcsinh(x * 10) / arcsinh(10), is a non-linear mapping that compresses bright pixels
-    # and boosts faint structure, making low-surface-brightness features, such as
-    # jellyfish tails, visible without saturating bright regions.
-    factor: int = 18
-    stretched: np.ndarray = np.arcsinh(normalized * factor) / np.arcsinh(factor)
-    # TODO: try new values and methods together with Andressa.
-    # stretch = HistEqStretch(data=data[~np.logical_or(np.isnan(data), data <= 0.0)])
+    Linear for faint features (x ~ m), logarithmic for bright features.
+    Parameters Q and alpha control the transition point.
+    """
+    finite = data[np.isfinite(data)]
+    if finite.size == 0:
+        return np.zeros_like(data)
+
+    m, sigma = _estimate_background(data)
+    if alpha is None:
+        alpha = 0.02 / (sigma + 1e-10)
+
+    stretched = np.arcsinh(alpha * softening * (data - m)) / softening
+
+    finite_stretched = stretched[np.isfinite(stretched)]
+    if finite_stretched.size == 0:
+        return np.zeros_like(data)
+    vmax = np.percentile(finite_stretched, 99.5)
+    if vmax > 0:
+        stretched = stretched / vmax
+    stretched = np.clip(stretched, 0.0, 1.0)
+    stretched[~np.isfinite(data)] = np.nan
     return stretched
 
 
@@ -94,22 +111,25 @@ def _log_stretch(data: np.ndarray) -> np.ndarray:
     return stretched
 
 
-def _normalize_stretch(
-    data: np.ndarray, normalize_func: Callable[[np.ndarray], np.ndarray] = _log_stretch
-) -> np.ndarray:
-    """Apply the given normalization stretch function to bring out faint features.
-    Defaults to LogStretch
-    """
-    return normalize_func(data)
+def _normalize_stretch(data: np.ndarray, stretch: str = "log") -> np.ndarray:
+    """Apply the named stretch function to bring out faint features."""
+    _stretch_map: dict[str, Callable[[np.ndarray], np.ndarray]] = {
+        "log": _log_stretch,
+        "lupton_asinh": _lupton_asinh_stretch,
+        "power": _power_stretch,
+    }
+    func = _stretch_map.get(stretch, _log_stretch)
+    return func(data)
 
 
 def create_galaxy_heatmap(
     slice_data: np.ndarray,
     colorscale: str = "viridis",
+    stretch: str = "log",
 ) -> dict[str, Any]:
     """Create a Plotly heatmap trace for a datacube slice."""
     z = []
-    for row in _normalize_stretch(data=slice_data, normalize_func=_log_stretch):
+    for row in _normalize_stretch(data=slice_data, stretch=stretch):
         z.append([None if np.isnan(v) else float(v) for v in row])
     return {
         "type": "heatmap",
@@ -177,12 +197,13 @@ def build_viewer_figure(
     clumps: ClumpCatalog,
     selected_ids: list[int] | None = None,
     colorscale: str = "Viridis",
+    stretch: str = "log",
 ) -> dict[str, Any]:
     """Assembles heatmap + boundaries + centroids."""
     slice_data: np.ndarray = datacube.get_slice_by_channel_index(channel_index)
     filter_name: str = datacube.filter_names[channel_index]
 
-    heatmap: dict[str, Any] = create_galaxy_heatmap(slice_data, colorscale)
+    heatmap: dict[str, Any] = create_galaxy_heatmap(slice_data, colorscale, stretch)
     boundaries: list[dict[str, Any]] = create_clump_boundary_traces(clumps, selected_ids)
     centroids: dict[str, Any] = create_centroid_markers(clumps)
 

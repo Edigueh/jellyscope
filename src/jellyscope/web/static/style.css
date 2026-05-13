@@ -126,6 +126,62 @@ main {
     font-weight: 600;
 }
 
+.view-btn {
+    background: var(--bg-panel);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 3px 10px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.15s;
+}
+
+.view-btn:hover {
+    border-color: var(--accent);
+    color: var(--text-primary);
+}
+
+.view-btn.active {
+    background: var(--accent);
+    color: #000;
+    border-color: var(--accent);
+    font-weight: 600;
+}
+
+#single-controls,
+#rgb-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+#rgb-controls select {
+    max-width: 90px;
+}
+
+#rgb-controls input[type="number"] {
+    background: var(--bg-panel);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 3px 6px;
+    font-size: 12px;
+    width: 55px;
+}
+
+#rgb-q {
+    width: 80px;
+    accent-color: var(--accent);
+}
+
+#rgb-q-label {
+    color: var(--accent);
+    font-weight: 600;
+    min-width: 30px;
+    font-size: 12px;
+}
+
 .toggle-btn {
     background: var(--bg-panel);
     color: var(--text-secondary);

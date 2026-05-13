@@ -2,14 +2,29 @@
  * Jellyscope — Frontend controller
  * Manages state, API calls, Plotly rendering, and user interactions.
  */
+
+function debounce(fn, ms) {
+    let timer;
+    return function (...args) {
+        clearTimeout(timer);
+        timer = setTimeout(() => fn.apply(this, args), ms);
+    };
+}
+
 const state = {
     datacube: "nircam",
     channel: 7, // F200W default
     selectedClumps: new Set(),
     colorscale: "Viridis",
+    stretch: "log",
     dragmode: "pan",
     clumps: [],
     showCentroids: false,
+    viewMode: "single", // "single" or "rgb"
+    rgbR: FILTERS.length - 1, // F480M (longest wavelength -> Red)
+    rgbG: Math.floor(FILTERS.length / 2), // middle -> Green
+    rgbB: 0, // F070W (shortest wavelength -> Blue)
+    rgbQ: 8.0,
 };
 
 const plotlyConfig = {
@@ -22,9 +37,27 @@ const plotlyConfig = {
 // Initialization.
 
 async function init() {
+    populateRGBSelects();
     await loadClumpList();
+    updateFilterLabel();
     await renderViewer();
     setupEventListeners();
+}
+
+function populateRGBSelects() {
+    const selects = ["rgb-r", "rgb-g", "rgb-b"];
+    const defaults = [state.rgbR, state.rgbG, state.rgbB];
+    selects.forEach((id, idx) => {
+        const sel = document.getElementById(id);
+        FILTERS.forEach((name, i) => {
+            const opt = document.createElement("option");
+            opt.value = i;
+            const wl = WAVELENGTHS[name];
+            opt.textContent = wl ? `${name} (${wl} µm)` : name;
+            if (i === defaults[idx]) opt.selected = true;
+            sel.appendChild(opt);
+        });
+    });
 }
 
 function setupEventListeners() {
@@ -35,7 +68,7 @@ function setupEventListeners() {
 
     document.getElementById("filter-slider").addEventListener("input", (e) => {
         state.channel = parseInt(e.target.value);
-        document.getElementById("filter-label").textContent = FILTERS[state.channel];
+        updateFilterLabel();
         renderViewer();
     });
 
@@ -44,6 +77,49 @@ function setupEventListeners() {
         renderViewer();
     });
 
+    document.getElementById("stretch-select").addEventListener("change", (e) => {
+        state.stretch = e.target.value;
+        renderViewer();
+    });
+
+    // View mode toggle (Single / RGB)
+    document.querySelectorAll(".view-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            document.querySelectorAll(".view-btn").forEach((b) => b.classList.remove("active"));
+            btn.classList.add("active");
+            state.viewMode = btn.dataset.view;
+            updateViewModeUI();
+            updateFilterLabel();
+            renderViewer();
+        });
+    });
+
+    // RGB filter selectors
+    document.getElementById("rgb-r").addEventListener("change", (e) => {
+        state.rgbR = parseInt(e.target.value);
+        updateFilterLabel();
+        renderViewer();
+    });
+    document.getElementById("rgb-g").addEventListener("change", (e) => {
+        state.rgbG = parseInt(e.target.value);
+        updateFilterLabel();
+        renderViewer();
+    });
+    document.getElementById("rgb-b").addEventListener("change", (e) => {
+        state.rgbB = parseInt(e.target.value);
+        updateFilterLabel();
+        renderViewer();
+    });
+
+    // Q slider with debounce
+    const debouncedRender = debounce(renderViewer, 300);
+    document.getElementById("rgb-q").addEventListener("input", (e) => {
+        state.rgbQ = parseFloat(e.target.value);
+        document.getElementById("rgb-q-label").textContent = state.rgbQ.toFixed(1);
+        debouncedRender();
+    });
+
+    // Drag mode buttons
     document.querySelectorAll(".mode-btn").forEach((btn) => {
         btn.addEventListener("click", () => {
             document.querySelectorAll(".mode-btn").forEach((b) => b.classList.remove("active"));
@@ -64,11 +140,33 @@ function setupEventListeners() {
     });
 }
 
+function updateFilterLabel() {
+    const label = document.getElementById("filter-label");
+    if (state.viewMode === "rgb") {
+        label.textContent = `R:${FILTERS[state.rgbR]}  G:${FILTERS[state.rgbG]}  B:${FILTERS[state.rgbB]}`;
+    } else {
+        const name = FILTERS[state.channel];
+        const wl = WAVELENGTHS[name];
+        label.textContent = wl ? `${name} (${wl} µm)` : name;
+    }
+}
+
+function updateViewModeUI() {
+    const singleControls = document.getElementById("single-controls");
+    const rgbControls = document.getElementById("rgb-controls");
+    if (state.viewMode === "rgb") {
+        singleControls.style.display = "none";
+        rgbControls.style.display = "flex";
+    } else {
+        singleControls.style.display = "flex";
+        rgbControls.style.display = "none";
+    }
+}
+
 // Clump List.
 async function loadClumpList() {
     const filter = document.getElementById("clump-filter");
     let url = "/api/clumps";
-    let html = "";
     if (filter.value) url += `?component=${filter.value}`;
 
     const resp = await fetch(url);
@@ -112,7 +210,14 @@ function updateClumpListUI() {
 // Galaxy Viewer.
 async function renderViewer() {
     const selectedStr = Array.from(state.selectedClumps).join(",");
-    const url = `/api/viewer/${state.datacube}/${state.channel}?selected=${selectedStr}&colorscale=${state.colorscale}`;
+    let url;
+
+    if (state.viewMode === "rgb") {
+        url = `/api/viewer/${state.datacube}/rgb?r=${state.rgbR}&g=${state.rgbG}&b=${state.rgbB}&selected=${selectedStr}&softening=${state.rgbQ}`;
+    } else {
+        url = `/api/viewer/${state.datacube}/${state.channel}?selected=${selectedStr}&colorscale=${state.colorscale}&stretch=${state.stretch}`;
+    }
+
     const resp = await fetch(url);
     const data = await resp.json();
     const fig = data.figure;

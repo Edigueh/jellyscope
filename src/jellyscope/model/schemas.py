@@ -4,6 +4,34 @@ from typing import Any
 
 from pydantic import BaseModel
 
+# --- Request models ---
+
+
+class RectSelection(BaseModel):
+    """Rectangle defined by two corners."""
+
+    x0: int
+    y0: int
+    x1: int
+    y1: int
+
+
+class RegionRequest(BaseModel):
+    """Request body for region spectrum extraction.
+
+    Provide either a list of pixel coordinates or a rectangle, not both.
+    """
+
+    pixels: list[list[int]] | None = None
+    rect: RectSelection | None = None
+
+
+class CompareRequest(BaseModel):
+    """Request body for multi-clump SED comparison."""
+
+    clump_ids: list[int]
+
+
 # --- Response models ---
 
 
@@ -62,3 +90,26 @@ class PixelClumpResponse(BaseModel):
     """Result of looking up which clump a pixel belongs to."""
 
     clump_id: int | None
+
+
+class SpectrumResponse(BaseModel):
+    """Spectrum data plus its Plotly figure."""
+
+    spectrum: dict[str, Any]
+    figure: dict[str, Any]
+
+
+class CompareResponse(BaseModel):
+    """Multi-clump comparison: overlaid Plotly figure plus individual spectra."""
+
+    figure: dict[str, Any]
+    spectra: list[dict[str, Any]]
+
+
+class RGBViewerResponse(BaseModel):
+    """Plotly figure for RGB composite viewer."""
+
+    figure: dict[str, Any]
+    r_filter: str
+    g_filter: str
+    b_filter: str

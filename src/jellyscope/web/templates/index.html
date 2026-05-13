@@ -24,19 +24,48 @@
                     {% endfor %}
                 </select>
 
-                <label for="filter-slider">Filter:</label>
-                <input type="range" id="filter-slider" min="0" max="{{ filters|length - 1 }}" value="7" step="1">
-                <span id="filter-label">{{ filters[7] }}</span>
-
-                <label for="colorscale-select">Colors:</label>
-                <select id="colorscale-select">
-                    <option value="Viridis" selected>Viridis</option>
-                    <option value="Inferno">Inferno</option>
-                    <option value="Plasma">Plasma</option>
-                    <option value="Cividis">Cividis</option>
-                    <option value="Hot">Hot</option>
-                    <option value="Greys">Greys</option>
+                <label for="stretch-select">Stretch:</label>
+                <select id="stretch-select">
+                    <option value="log" selected>Log</option>
+                    <option value="lupton_asinh">Asinh (Lupton)</option>
+                    <option value="power">Power</option>
                 </select>
+
+                <span class="separator">|</span>
+
+                <button id="btn-view-single" class="view-btn active" data-view="single">Single</button>
+                <button id="btn-view-rgb" class="view-btn" data-view="rgb">RGB</button>
+
+                <span class="separator">|</span>
+
+                <div id="single-controls">
+                    <label for="filter-slider">Filter:</label>
+                    <input type="range" id="filter-slider" min="0" max="{{ filters|length - 1 }}" value="7" step="1">
+
+                    <label for="colorscale-select">Colors:</label>
+                    <select id="colorscale-select">
+                        <option value="Viridis" selected>Viridis</option>
+                        <option value="Inferno">Inferno</option>
+                        <option value="Plasma">Plasma</option>
+                        <option value="Cividis">Cividis</option>
+                        <option value="Hot">Hot</option>
+                        <option value="Greys">Greys</option>
+                    </select>
+                </div>
+
+                <div id="rgb-controls" style="display:none;">
+                    <label for="rgb-r">R:</label>
+                    <select id="rgb-r"></select>
+                    <label for="rgb-g">G:</label>
+                    <select id="rgb-g"></select>
+                    <label for="rgb-b">B:</label>
+                    <select id="rgb-b"></select>
+                    <label for="rgb-q">Q:</label>
+                    <input type="range" id="rgb-q" value="8" min="1" max="30" step="0.5">
+                    <span id="rgb-q-label">8.0</span>
+                </div>
+
+                <span id="filter-label">{{ filters[7] }}</span>
 
                 <span class="separator">|</span>
 
@@ -78,6 +107,7 @@
 
     <script>
         const FILTERS = {{ filters | tojson | safe }};
+        const WAVELENGTHS = {{ wavelengths | tojson | safe }};
     </script>
     <script src="{{ url_for('static', path='app.js') }}"></script>
 </body>

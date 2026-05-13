@@ -5,6 +5,8 @@ The visualization layer builds Plotly figure dictionaries from data. These dicts
 **Files covered**:
 
 - [visualization/image_viewer.py](../src/jellyscope/visualization/image_viewer.py) — Galaxy heatmap + clump overlays
+- [visualization/rgb_composite.py](../src/jellyscope/visualization/rgb_composite.py) — Lupton et al. (2004) RGB composite
+- [visualization/spectrum_plot.py](../src/jellyscope/visualization/spectrum_plot.py) — SED line plots
 - [visualization/properties_panel.py](../src/jellyscope/visualization/properties_panel.py) — Property formatting
 
 ---
@@ -42,13 +44,24 @@ Applies arcsinh intensity stretch. Standard in optical/IR astronomy (SDSS, STScI
 
 The factor of 18 controls the stretch intensity — higher values bring out more faint structure.
 
+#### `_lupton_asinh_stretch(data: np.ndarray, softening=8.0, alpha=None) -> np.ndarray`
+
+Lupton et al. (2004) single-band asinh stretch: `f(x) = arcsinh(alpha*Q*(x-m)) / Q`. Linear for faint features, logarithmic for bright features. Background level `m` and noise `sigma` are estimated via sigma-clipped statistics. If `alpha` is not provided, it is auto-computed from the noise level as `0.02 / sigma`.
+
+**Algorithm**:
+
+1. Estimate background `(m, sigma)` via sigma-clipped stats
+2. Compute `alpha = 0.02 / sigma` if not given
+3. Apply `arcsinh(alpha * Q * (x - m)) / Q`
+4. Normalize to [0, 1] using 99.5th percentile
+
 #### `_power_stretch(data: np.ndarray) -> np.ndarray`
 
 Power stretch using astropy's `PowerStretch(a=0.5)`. Lower exponent = more aggressive on faint features. Uses [20th, 99.5th] percentile bounds.
 
-#### `_normalize_stretch(data, normalize_func=_log_stretch) -> np.ndarray`
+#### `_normalize_stretch(data, stretch="log") -> np.ndarray`
 
-Dispatcher that applies the given stretch function. Defaults to `_log_stretch`.
+Dispatcher that applies the given stretch function. Accepts `"log"`, `"lupton_asinh"`, or `"power"`. Defaults to `"log"`.
 
 ---
 
@@ -125,7 +138,7 @@ Creates a single scatter trace with all clump centroids as `x` markers with ID l
 
 ---
 
-### `build_viewer_figure(datacube, channel_index, clumps, selected_ids=None, colorscale="Viridis") -> dict`
+### `build_viewer_figure(datacube, channel_index, clumps, selected_ids=None, colorscale="Viridis", stretch="log") -> dict`
 
 **Main entry point**. Assembles the complete Plotly figure by combining all the traces above with a layout.
 
@@ -138,6 +151,7 @@ Creates a single scatter trace with all clump centroids as `x` markers with ID l
 | `clumps` | `ClumpCatalog` | Clump catalog for overlays |
 | `selected_ids` | `list[int] \| None` | Clumps to highlight in red |
 | `colorscale` | `str` | Plotly colorscale name |
+| `stretch` | `str` | `"log"`, `"lupton_asinh"`, or `"power"` |
 
 **Returns**: Complete Plotly figure dict:
 
@@ -203,3 +217,78 @@ This dict is sent to the frontend, where `app.js` renders it as an HTML table:
     ...
 </table>
 ```
+
+---
+
+## visualization/rgb_composite.py — RGB Composite
+
+**Location**: `src/jellyscope/visualization/rgb_composite.py`
+
+Implements the Lupton et al. (2004) color-preserving RGB mapping. The key insight: apply the intensity stretch to total intensity I = (R+G+B)/3, then scale each band by f(I)/I. This ensures an object's color in the output depends only on its flux ratios, not its brightness.
+
+### `lupton_rgb_composite(r_data, g_data, b_data, softening=8.0, alpha=None) -> np.ndarray`
+
+Core algorithm (Equation 2 of the paper).
+
+**Parameters**:
+
+| Param | Type | Description |
+| ------- | ------ | ------------- |
+| `r_data` | `np.ndarray` | 2D flux array for the red channel |
+| `g_data` | `np.ndarray` | 2D flux array for the green channel |
+| `b_data` | `np.ndarray` | 2D flux array for the blue channel |
+| `softening` | `float` | Q parameter controlling linear-to-log transition (typical: 8-9) |
+| `alpha` | `float \| None` | Linear stretch factor. Auto-estimated from noise if None |
+
+**Algorithm**:
+
+1. Compute total intensity: `I = (R + G + B) / 3`
+2. Estimate background `(m, sigma)` via sigma-clipped stats
+3. Compute `alpha = 0.02 / sigma` if not given
+4. Apply asinh stretch to intensity: `f(I) = arcsinh(alpha * Q * (I - m)) / Q`
+5. Color-preserving scale: `ratio = f(I) / (I - m)`
+6. Scale each band: `R_out = (R - m) * ratio`, etc.
+7. Per-pixel saturation clamping: if max(R,G,B) > 1, scale down to preserve hue
+8. Global normalization to [0,1] using 99.5th percentile
+9. Return uint8 array of shape `(ny, nx, 3)`
+
+### `build_rgb_figure(datacube, r_index, g_index, b_index, clumps, ...) -> dict`
+
+Assembles the Plotly figure with RGB image + clump overlays.
+
+**Coordinate system note**: Plotly's `go.Image` renders array row 0 at the top (y-axis increases downward), while heatmaps render row 0 at the bottom. To match single-band visual orientation:
+
+1. The image is flipped vertically (`np.flipud`)
+2. Boundary/centroid y-coordinates are transformed: `y_new = ny - 1 - y`
+3. The y-axis uses `autorange: "reversed"` to keep y=0 at the bottom
+
+All three are required for correct alignment between the RGB image and scatter overlays.
+
+---
+
+## visualization/spectrum_plot.py — SED Plots
+
+**Location**: `src/jellyscope/visualization/spectrum_plot.py`
+
+Builds Plotly line charts for Spectral Energy Distributions (SEDs).
+
+### `create_sed_figure(spectrum, title="Spectral Energy Distribution") -> dict`
+
+Creates a single SED plot with flux vs wavelength. If the spectrum dict contains `std_flux`, a filled ±1σ uncertainty band is added.
+
+**Input `spectrum` dict**:
+
+```python
+{
+    "wavelengths": [0.704, 0.901, ...],   # µm
+    "mean_flux": [1.2e-3, 1.5e-3, ...],   # or "fluxes" for single pixel
+    "std_flux": [2e-4, 3e-4, ...],         # optional
+    "filter_names": ["F070W", "F090W", ...],
+}
+```
+
+### `create_multi_sed_figure(spectra, labels) -> dict`
+
+Overlays multiple SEDs on one plot for comparison. Each SED gets a distinct color from an 8-color palette. Used by the `/api/compare/spectrum/` endpoint.
+
+---
