@@ -9,6 +9,7 @@ const state = {
     colorscale: "Viridis",
     dragmode: "pan",
     clumps: [],
+    showCentroids: false,
 };
 
 const plotlyConfig = {
@@ -55,6 +56,12 @@ function setupEventListeners() {
     });
 
     document.getElementById("clump-filter").addEventListener("change", loadClumpList);
+
+    document.getElementById("btn-centroids").addEventListener("click", () => {
+        state.showCentroids = !state.showCentroids;
+        document.getElementById("btn-centroids").classList.toggle("active", state.showCentroids);
+        renderViewer();
+    });
 }
 
 // Clump List.
@@ -111,6 +118,10 @@ async function renderViewer() {
     const fig = data.figure;
 
     fig.layout.dragmode = state.dragmode;
+
+    if (!state.showCentroids) {
+        fig.data.pop();
+    }
 
     const viewer = document.getElementById("galaxy-viewer");
     await Plotly.react(viewer, fig.data, fig.layout, plotlyConfig);

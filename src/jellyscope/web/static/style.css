@@ -126,6 +126,29 @@ main {
     font-weight: 600;
 }
 
+.toggle-btn {
+    background: var(--bg-panel);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 3px 10px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.15s;
+}
+
+.toggle-btn:hover {
+    border-color: var(--accent);
+    color: var(--text-primary);
+}
+
+.toggle-btn.active {
+    background: var(--accent);
+    color: #000;
+    border-color: var(--accent);
+    font-weight: 600;
+}
+
 #galaxy-viewer {
     flex: 1;
     min-height: 0;
