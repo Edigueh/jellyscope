@@ -11,6 +11,13 @@ function debounce(fn, ms) {
     };
 }
 
+const DEFAULT_RGB_FILTERS = {r: "F200W", g: "F115W", b: "F090W"};
+
+function defaultRgbIndex(filterName, fallback) {
+    const idx = FILTERS.indexOf(filterName);
+    return idx >= 0 ? idx : fallback;
+}
+
 const state = {
     datacube: "nircam",
     channel: 7, // F200W default
@@ -21,10 +28,11 @@ const state = {
     clumps: [],
     showCentroids: false,
     viewMode: "single", // "single" or "rgb"
-    rgbR: FILTERS.length - 1, // F480M (longest wavelength -> Red)
-    rgbG: Math.floor(FILTERS.length / 2), // middle -> Green
-    rgbB: 0, // F070W (shortest wavelength -> Blue)
+    rgbR: defaultRgbIndex(DEFAULT_RGB_FILTERS.r, FILTERS.length - 1),
+    rgbG: defaultRgbIndex(DEFAULT_RGB_FILTERS.g, Math.floor(FILTERS.length / 2)),
+    rgbB: defaultRgbIndex(DEFAULT_RGB_FILTERS.b, 0),
     rgbQ: 8.0,
+    rgbMethod: "percentile_asinh",
 };
 
 const plotlyConfig = {
@@ -40,6 +48,7 @@ async function init() {
     populateRGBSelects();
     await loadClumpList();
     updateFilterLabel();
+    updateRGBMethodUI();
     await renderViewer();
     setupEventListeners();
 }
@@ -58,6 +67,60 @@ function populateRGBSelects() {
             sel.appendChild(opt);
         });
     });
+    updateRGBFilterOptions();
+}
+
+// Enforce λ_R > λ_G > λ_B by disabling invalid options.
+// If current state.rgbG / rgbB violate the constraint, auto-pick the
+// next-longest valid filter beneath the upstream one.
+function updateRGBFilterOptions() {
+    const wlOf = (i) => WAVELENGTHS[FILTERS[i]] ?? -Infinity;
+
+    // G must have λ < λ_R; if violated, pick the longest filter still < λ_R.
+    if (wlOf(state.rgbG) >= wlOf(state.rgbR)) {
+        let best = -1;
+        let bestWl = -Infinity;
+        FILTERS.forEach((name, i) => {
+            const wl = WAVELENGTHS[name] ?? -Infinity;
+            if (wl < wlOf(state.rgbR) && wl > bestWl) {
+                best = i;
+                bestWl = wl;
+            }
+        });
+        if (best >= 0) state.rgbG = best;
+    }
+
+    // B must have λ < λ_G; same fallback strategy.
+    if (wlOf(state.rgbB) >= wlOf(state.rgbG)) {
+        let best = -1;
+        let bestWl = -Infinity;
+        FILTERS.forEach((name, i) => {
+            const wl = WAVELENGTHS[name] ?? -Infinity;
+            if (wl < wlOf(state.rgbG) && wl > bestWl) {
+                best = i;
+                bestWl = wl;
+            }
+        });
+        if (best >= 0) state.rgbB = best;
+    }
+
+    // Apply disabled flags + sync selected values to the (possibly updated) state.
+    const limits = {
+        "rgb-r": Infinity,
+        "rgb-g": wlOf(state.rgbR),
+        "rgb-b": wlOf(state.rgbG),
+    };
+    const current = {"rgb-r": state.rgbR, "rgb-g": state.rgbG, "rgb-b": state.rgbB};
+    for (const id of Object.keys(limits)) {
+        const sel = document.getElementById(id);
+        if (!sel) continue;
+        const max = limits[id];
+        for (const opt of sel.options) {
+            const wl = WAVELENGTHS[FILTERS[parseInt(opt.value)]] ?? -Infinity;
+            opt.disabled = !(wl < max);
+        }
+        sel.value = String(current[id]);
+    }
 }
 
 function setupEventListeners() {
@@ -97,17 +160,27 @@ function setupEventListeners() {
     // RGB filter selectors
     document.getElementById("rgb-r").addEventListener("change", (e) => {
         state.rgbR = parseInt(e.target.value);
+        updateRGBFilterOptions();
         updateFilterLabel();
         renderViewer();
     });
     document.getElementById("rgb-g").addEventListener("change", (e) => {
         state.rgbG = parseInt(e.target.value);
+        updateRGBFilterOptions();
         updateFilterLabel();
         renderViewer();
     });
     document.getElementById("rgb-b").addEventListener("change", (e) => {
         state.rgbB = parseInt(e.target.value);
+        updateRGBFilterOptions();
         updateFilterLabel();
+        renderViewer();
+    });
+
+    // RGB method toggle
+    document.getElementById("rgb-method").addEventListener("change", (e) => {
+        state.rgbMethod = e.target.value;
+        updateRGBMethodUI();
         renderViewer();
     });
 
@@ -157,10 +230,18 @@ function updateViewModeUI() {
     if (state.viewMode === "rgb") {
         singleControls.style.display = "none";
         rgbControls.style.display = "flex";
+        updateRGBMethodUI();
     } else {
         singleControls.style.display = "flex";
         rgbControls.style.display = "none";
     }
+}
+
+// Q only matters for the Lupton method; hide its slider otherwise.
+function updateRGBMethodUI() {
+    const qWrap = document.getElementById("rgb-q-wrap");
+    if (!qWrap) return;
+    qWrap.style.display = state.rgbMethod === "lupton" ? "" : "none";
 }
 
 // Clump List.
@@ -213,7 +294,7 @@ async function renderViewer() {
     let url;
 
     if (state.viewMode === "rgb") {
-        url = `/api/viewer/${state.datacube}/rgb?r=${state.rgbR}&g=${state.rgbG}&b=${state.rgbB}&selected=${selectedStr}&softening=${state.rgbQ}`;
+        url = `/api/viewer/${state.datacube}/rgb?r=${state.rgbR}&g=${state.rgbG}&b=${state.rgbB}&selected=${selectedStr}&method=${state.rgbMethod}&softening=${state.rgbQ}`;
     } else {
         url = `/api/viewer/${state.datacube}/${state.channel}?selected=${selectedStr}&colorscale=${state.colorscale}&stretch=${state.stretch}`;
     }

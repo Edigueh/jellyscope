@@ -86,6 +86,7 @@ def get_rgb_viewer_figure(
     g: Annotated[int, Query(description="Green channel filter index")],
     b: Annotated[int, Query(description="Blue channel filter index")],
     selected: Annotated[str, Query()] = "",
+    method: Annotated[Literal["percentile_asinh", "lupton"], Query()] = "percentile_asinh",
     softening: Annotated[float, Query()] = 8.0,
 ) -> RGBViewerResponse:
     store = _store()
@@ -100,7 +101,9 @@ def get_rgb_viewer_figure(
     selected_ids: list[int] = (
         [int(i) for i in selected.split(",") if i.strip()] if selected else []
     )
-    figure: dict[str, Any] = build_rgb_figure(dc, r, g, b, store.clumps, selected_ids, softening)
+    figure: dict[str, Any] = build_rgb_figure(
+        dc, r, g, b, store.clumps, selected_ids, method=method, softening=softening
+    )
     return RGBViewerResponse(
         figure=figure,
         r_filter=dc.filter_names[r],

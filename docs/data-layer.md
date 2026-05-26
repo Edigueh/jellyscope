@@ -31,6 +31,16 @@ NIRCAM_WAVELENGTHS: dict[str, float] = {
 
 The naming convention (`F` + wavelength in nm + `W`/`M`) follows JWST standard: `W` = wide-band, `M` = medium-band.
 
+### `DEFAULT_RGB`
+
+Module-level dictionary defining the default filter assignments for the RGB composite view.
+
+```python
+DEFAULT_RGB: dict[str, str] = {"r": "F200W", "g": "F115W", "b": "F090W"}
+```
+
+These are the filters the frontend uses to seed the R/G/B dropdowns at startup (via `DEFAULT_RGB_FILTERS` in `app.js`, resolved to channel indices by `defaultRgbIndex()`). They satisfy the wavelength-ordering constraint λ_R > λ_G > λ_B that the UI enforces on user selections.
+
 ### `JellyscopeConfig`
 
 Pydantic `BaseModel` holding all application settings. Every field has a sensible default, so `JellyscopeConfig()` works out of the box with the toy data.

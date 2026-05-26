@@ -126,10 +126,17 @@ curl "http://localhost:5000/api/viewer/nircam/7?selected=0,4&colorscale=Viridis&
 
 ### `GET /api/viewer/{datacube_name}/rgb`
 
-Returns an RGB composite Plotly figure using the Lupton et al. (2004) algorithm.
+Returns an RGB composite Plotly figure with clump overlays. Two stretch methods are available, selectable via the `method` query parameter:
+
+- **`percentile_asinh`** (default) — per-band median subtract, percentile clip, asinh stretch, and pedestal cut. Recipe contributed by Andressa; produces clean, deep-field-style images.
+- **`lupton`** — Lupton et al. (2004) Eq. 2 color-preserving mapping. Output color depends only on flux ratios, not brightness. The `softening` (Q) parameter applies only to this method.
 
 ```bash
-curl "http://localhost:5000/api/viewer/nircam/rgb?r=19&g=10&b=0&softening=8.0"
+# Default method (percentile_asinh) with R=F200W, G=F115W, B=F090W
+curl "http://localhost:5000/api/viewer/nircam/rgb?r=7&g=2&b=1&method=percentile_asinh"
+
+# Lupton method with custom softening
+curl "http://localhost:5000/api/viewer/nircam/rgb?r=19&g=10&b=0&method=lupton&softening=8.0"
 ```
 
 **Query parameters**:
@@ -140,11 +147,13 @@ curl "http://localhost:5000/api/viewer/nircam/rgb?r=19&g=10&b=0&softening=8.0"
 | `g` | `int` | required | Green channel filter index |
 | `b` | `int` | required | Blue channel filter index |
 | `selected` | `string` | `""` | Comma-separated clump IDs to highlight |
-| `softening` | `float` | `8.0` | Q parameter (controls linear-to-log transition) |
+| `method` | `"percentile_asinh"` \| `"lupton"` | `"percentile_asinh"` | Stretch method |
+| `softening` | `float` | `8.0` | Lupton Q parameter (only used when `method="lupton"`) |
 
 **Error responses**:
 
 - `400` — channel index out of range
+- `422` — invalid `method` value
 
 **Response**:
 
@@ -279,8 +288,8 @@ const resp = await fetch(`/api/viewer/nircam/7?selected=0,4&colorscale=Viridis&s
 const data = await resp.json();
 Plotly.react("galaxy-viewer", data.figure.data, data.figure.layout);
 
-// Get RGB composite
-const resp = await fetch(`/api/viewer/nircam/rgb?r=19&g=10&b=0&softening=8.0`);
+// Get RGB composite (default percentile_asinh method)
+const resp = await fetch(`/api/viewer/nircam/rgb?r=7&g=2&b=1&method=percentile_asinh`);
 const data = await resp.json();
 Plotly.react("galaxy-viewer", data.figure.data, data.figure.layout);
 

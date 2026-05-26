@@ -1,8 +1,11 @@
-"""Tests for the Lupton RGB composite algorithm."""
+"""Tests for the RGB composite algorithms."""
 
 import numpy as np
 
-from jellyscope.visualization.rgb_composite import lupton_rgb_composite
+from jellyscope.visualization.rgb_composite import (
+    lupton_rgb_composite,
+    percentile_asinh_composite,
+)
 
 
 class TestLuptonRGBComposite:
@@ -82,3 +85,70 @@ class TestLuptonRGBComposite:
         # Should be dominantly red, NOT white
         assert pixel[0] > pixel[1]
         assert pixel[0] > pixel[2]
+
+
+class TestPercentileAsinhComposite:
+    def test_output_shape(self):
+        rng = np.random.default_rng(42)
+        r = rng.normal(100, 10, (30, 40))
+        g = rng.normal(80, 10, (30, 40))
+        b = rng.normal(60, 10, (30, 40))
+        result = percentile_asinh_composite(r, g, b)
+        assert result.shape == (30, 40, 3)
+        assert result.dtype == np.uint8
+
+    def test_output_range(self):
+        rng = np.random.default_rng(7)
+        r = rng.normal(100, 10, (20, 20))
+        g = rng.normal(80, 10, (20, 20))
+        b = rng.normal(60, 10, (20, 20))
+        result = percentile_asinh_composite(r, g, b)
+        assert np.all(result >= 0)
+        assert np.all(result <= 255)
+
+    def test_nan_becomes_black(self):
+        rng = np.random.default_rng(1)
+        r = rng.normal(100, 10, (10, 10))
+        g = rng.normal(80, 10, (10, 10))
+        b = rng.normal(60, 10, (10, 10))
+        r[3, 4] = np.nan
+        result = percentile_asinh_composite(r, g, b)
+        assert result[3, 4, 0] == 0
+        assert result[3, 4, 1] == 0
+        assert result[3, 4, 2] == 0
+
+    def test_all_nan_becomes_black(self):
+        r = np.full((10, 10), np.nan)
+        g = np.full((10, 10), np.nan)
+        b = np.full((10, 10), np.nan)
+        result = percentile_asinh_composite(r, g, b)
+        assert np.all(result == 0)
+
+    def test_constant_image_below_floor_is_black(self):
+        # A flat image after median-subtract becomes 0; after the floor cut it stays 0.
+        r = np.full((10, 10), 5.0)
+        g = np.full((10, 10), 5.0)
+        b = np.full((10, 10), 5.0)
+        result = percentile_asinh_composite(r, g, b)
+        assert np.all(result == 0)
+
+    def test_bright_pixel_dominates(self):
+        # Faint flat background plus a bright red pixel: that pixel should be the brightest.
+        rng = np.random.default_rng(3)
+        r = rng.normal(50, 1, (10, 10))
+        g = rng.normal(50, 1, (10, 10))
+        b = rng.normal(50, 1, (10, 10))
+        r[5, 5] = 500.0
+        result = percentile_asinh_composite(r, g, b)
+        # Channel R at the bright pixel should hit (or be near) the max.
+        assert result[5, 5, 0] == result[..., 0].max()
+
+    def test_weights_scale_channels(self):
+        rng = np.random.default_rng(11)
+        r = rng.normal(100, 10, (15, 15))
+        g = rng.normal(100, 10, (15, 15))
+        b = rng.normal(100, 10, (15, 15))
+        baseline = percentile_asinh_composite(r, g, b, weights=(1.0, 1.0, 1.0))
+        boosted = percentile_asinh_composite(r, g, b, weights=(2.0, 1.0, 1.0))
+        # Boosting R by 2x should not decrease the R channel anywhere.
+        assert (boosted[..., 0] >= baseline[..., 0]).all()

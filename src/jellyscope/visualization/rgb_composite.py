@@ -1,10 +1,15 @@
-"""RGB color composite using the Lupton et al. (2004) algorithm.
+"""RGB color composite for JWST NIRCam imaging.
 
-Implements Equation 2 from the paper: color-preserving mapping that ensures
-an object's color in the RGB image depends only on its flux ratios, not brightness.
+Two methods are provided:
+
+- ``percentile_asinh_composite`` (default): per-band background subtraction,
+  percentile clipping, asinh stretch, and pedestal cut. Not strictly color-preserving
+  but produces clean, deep-field-style images.
+- ``lupton_rgb_composite``: Lupton et al. (2004) Eq. 2 — color-preserving
+  mapping where an object's RGB color depends only on its flux ratios.
 """
 
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 
@@ -15,6 +20,8 @@ from jellyscope.visualization.image_viewer import (
     create_centroid_markers,
     create_clump_boundary_traces,
 )
+
+RGBMethod = Literal["percentile_asinh", "lupton"]
 
 _GRAY: str = "#cccccc"
 _DARK_GRAY: str = "#999"
@@ -43,12 +50,6 @@ def lupton_rgb_composite(
     Returns:
         uint8 array of shape (ny, nx, 3) suitable for Plotly go.Image.
     """
-    # TODO: Arrumar a equação.
-    # Não faz sentido ter os filtros daquela forma.
-    # Limitar a escolha de filtros.
-    # Deixar 3 filtros pro azul por exemplo.
-    # Escolher os outros filtros a partir do primeiro.
-    # A partir da primeira escolha, restringir as próximas opções.
     intensity = (r_data + g_data + b_data) / 3.0
     m, sigma = _estimate_background(intensity)
     if alpha is None:
@@ -94,6 +95,74 @@ def lupton_rgb_composite(
     return (rgb * 255).astype(np.uint8)
 
 
+def _normalize_band_asinh(
+    band: np.ndarray,
+    pmin: float,
+    pmax: float,
+    scale: float,
+    floor: float,
+) -> np.ndarray:
+    """Per-band normalization: median subtract, percentile clip, asinh, floor."""
+    finite = band[np.isfinite(band)]
+    if finite.size == 0:
+        return np.zeros_like(band, dtype=np.float64)
+
+    bkg = float(np.median(finite))
+    x = band - bkg
+
+    finite_x = x[np.isfinite(x)]
+    lo = float(np.percentile(finite_x, pmin))
+    hi = float(np.percentile(finite_x, pmax))
+    denom = hi - lo if hi > lo else 1.0
+    y = (x - lo) / denom
+    y = np.clip(y, 0.0, 1.0)
+
+    y = np.arcsinh(y / scale) / np.arcsinh(1.0 / scale)
+    y = np.where(y < floor, 0.0, y)
+    y = np.clip(y, 0.0, 1.0)
+    return y
+
+
+def percentile_asinh_composite(
+    r_data: np.ndarray,
+    g_data: np.ndarray,
+    b_data: np.ndarray,
+    pmin: float = 10.0,
+    pmax: float = 99.9,
+    scale: float = 0.1,
+    floor: float = 0.05,
+    weights: tuple[float, float, float] = (1.0, 1.02, 1.02),
+) -> np.ndarray:
+    """Per-band percentile + asinh stretch composite (Andressa's recipe).
+
+    Each band is independently background-subtracted (median), percentile-clipped,
+    asinh-stretched, and pedestal-cut, then weighted. Not color-preserving in the
+    Lupton sense, but produces a clean image for deep-field NIRCam data.
+
+    Args:
+        r_data, g_data, b_data: 2D flux arrays.
+        pmin, pmax: Percentile bounds for the linear clip step (in percent).
+        scale: asinh softening parameter — smaller boosts faint features more.
+        floor: pedestal cut applied after stretch; pixels below become 0.
+        weights: (wR, wG, wB) per-channel multipliers applied at the end.
+
+    Returns:
+        uint8 array (ny, nx, 3) suitable for Plotly go.Image.
+    """
+    r = _normalize_band_asinh(r_data, pmin, pmax, scale, floor) * weights[0]
+    g = _normalize_band_asinh(g_data, pmin, pmax, scale, floor) * weights[1]
+    b = _normalize_band_asinh(b_data, pmin, pmax, scale, floor) * weights[2]
+
+    nan_mask = ~(np.isfinite(r_data) & np.isfinite(g_data) & np.isfinite(b_data))
+    r[nan_mask] = 0.0
+    g[nan_mask] = 0.0
+    b[nan_mask] = 0.0
+
+    rgb = np.stack([r, g, b], axis=-1)
+    rgb = np.clip(rgb, 0.0, 1.0)
+    return (rgb * 255).astype(np.uint8)
+
+
 def build_rgb_figure(
     datacube: DataCube,
     r_index: int,
@@ -101,15 +170,26 @@ def build_rgb_figure(
     b_index: int,
     clumps: ClumpCatalog,
     selected_ids: list[int] | None = None,
+    method: RGBMethod = "percentile_asinh",
     softening: float = 8.0,
     alpha: float | None = None,
 ) -> dict[str, Any]:
-    """Build a Plotly figure with RGB composite + clump overlays."""
+    """Build a Plotly figure with RGB composite + clump overlays.
+
+    Args:
+        method: ``"percentile_asinh"`` (default) or ``"lupton"``.
+        softening: Lupton ``Q`` parameter (only used when ``method='lupton'``).
+        alpha: Lupton linear stretch factor (only used when ``method='lupton'``).
+    """
     r_data = datacube.get_slice_by_channel_index(r_index)
     g_data = datacube.get_slice_by_channel_index(g_index)
     b_data = datacube.get_slice_by_channel_index(b_index)
 
-    rgb = lupton_rgb_composite(r_data, g_data, b_data, softening, alpha)
+    if method == "lupton":
+        rgb = lupton_rgb_composite(r_data, g_data, b_data, softening, alpha)
+    else:
+        rgb = percentile_asinh_composite(r_data, g_data, b_data)
+
     ny = rgb.shape[0]
     rgb = np.flipud(rgb)
 

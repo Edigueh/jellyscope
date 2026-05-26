@@ -54,8 +54,10 @@ Right column: `360px` fixed — the panels stack vertically.
 | `btn-view-single` / `btn-view-rgb` | `<button>` | Toggle between single-band and RGB mode |
 | `filter-slider` | `<input type="range">` | Navigate 20 filter channels (0-19) — single mode only |
 | `colorscale-select` | `<select>` | Viridis, Inferno, Plasma, Cividis, Hot, Greys — single mode only |
-| `rgb-r` / `rgb-g` / `rgb-b` | `<select>` | Filter channel for each RGB band — RGB mode only |
-| `rgb-q` | `<input type="range">` | Softening (Q) parameter for Lupton stretch — RGB mode only |
+| `rgb-r` / `rgb-g` / `rgb-b` | `<select>` | Filter channel for each RGB band — RGB mode only. Wavelengths constrained: λ_R > λ_G > λ_B |
+| `rgb-method` | `<select>` | RGB stretch method: `"Percentile Asinh"` (default) or `"Lupton"` |
+| `rgb-q-wrap` | `<span>` | Wrapper around the Q slider — hidden when method ≠ Lupton |
+| `rgb-q` | `<input type="range">` | Softening (Q) parameter for Lupton stretch — only visible when method = Lupton |
 | `rgb-q-label` | `<span>` | Shows current Q value |
 | `filter-label` | `<span>` | Unified status: filter name (single) or R/G/B combo (RGB) |
 | `btn-click` / `btn-select` / `btn-lasso` | `<button>` | Interaction mode buttons |
@@ -96,6 +98,8 @@ Right column: `360px` fixed — the panels stack vertically.
 All UI state is tracked in a single global object:
 
 ```javascript
+const DEFAULT_RGB_FILTERS = {r: "F200W", g: "F115W", b: "F090W"};
+
 const state = {
     datacube: "nircam",           // Currently selected datacube
     channel: 7,                   // Current filter channel (default: F200W)
@@ -106,21 +110,25 @@ const state = {
     clumps: [],                   // Loaded clump list from API
     showCentroids: false,         // Whether centroid markers are visible
     viewMode: "single",           // "single" (heatmap) or "rgb" (composite)
-    rgbR: 19,                     // Red channel filter index (longest λ)
-    rgbG: 10,                     // Green channel filter index (middle λ)
-    rgbB: 0,                      // Blue channel filter index (shortest λ)
+    rgbR: defaultRgbIndex(DEFAULT_RGB_FILTERS.r, FILTERS.length - 1),  // F200W
+    rgbG: defaultRgbIndex(DEFAULT_RGB_FILTERS.g, Math.floor(FILTERS.length / 2)),  // F115W
+    rgbB: defaultRgbIndex(DEFAULT_RGB_FILTERS.b, 0),                   // F090W
     rgbQ: 8.0,                    // Lupton softening parameter
+    rgbMethod: "percentile_asinh",// "percentile_asinh" (default) or "lupton"
 };
 ```
+
+The RGB defaults come from `DEFAULT_RGB_FILTERS` (mirrors `DEFAULT_RGB` in `src/jellyscope/config.py`) and are resolved to channel indices via the `defaultRgbIndex(filterName, fallback)` helper, which falls back to a positional index if the named filter is missing from `FILTERS`.
 
 ### Initialization Flow
 
 ```plaintext
 DOMContentLoaded
     └── init()
-        ├── populateRGBSelects()  → fill R/G/B dropdowns with filter names + wavelengths
+        ├── populateRGBSelects()  → fill R/G/B dropdowns; calls updateRGBFilterOptions() at end
         ├── loadClumpList()       → GET /api/clumps → populate clump list
         ├── updateFilterLabel()   → set initial status label
+        ├── updateRGBMethodUI()   → show/hide Q slider based on state.rgbMethod
         ├── renderViewer()        → GET /api/viewer/... → render Plotly figure
         └── setupEventListeners()
             ├── datacube-select    → onChange → renderViewer()
@@ -128,7 +136,8 @@ DOMContentLoaded
             ├── colorscale-select  → onChange → renderViewer()
             ├── stretch-select     → onChange → renderViewer()
             ├── view-btn (Single/RGB) → onClick → updateViewModeUI() + renderViewer()
-            ├── rgb-r/g/b          → onChange → updateFilterLabel() + renderViewer()
+            ├── rgb-r/g/b          → onChange → updateRGBFilterOptions() + updateFilterLabel() + renderViewer()
+            ├── rgb-method         → onChange → updateRGBMethodUI() + renderViewer()
             ├── rgb-q              → onInput → debounced(renderViewer, 300ms)
             ├── mode buttons       → onClick → Plotly.relayout(dragmode)
             ├── btn-centroids      → onClick → toggle + renderViewer()
@@ -149,13 +158,32 @@ Attaches DOM event handlers to all control elements. Each handler updates `state
 
 Utility that delays function execution until `ms` milliseconds after the last invocation. Used for the Q slider to avoid flooding the API during drag.
 
+#### `defaultRgbIndex(filterName, fallback)`
+
+Resolves a filter name (e.g. `"F200W"`) to its index in the `FILTERS` array. Returns `fallback` if the name is not found. Used to seed `state.rgbR/G/B` from `DEFAULT_RGB_FILTERS` at startup.
+
 #### `populateRGBSelects()`
 
-Fills the R/G/B `<select>` dropdowns with filter options (name + wavelength labels). Sets default values: longest wavelength → R, middle → G, shortest → B.
+Fills the R/G/B `<select>` dropdowns with filter options (name + wavelength labels). The default selections come from `DEFAULT_RGB_FILTERS` (R = F200W, G = F115W, B = F090W) via `defaultRgbIndex()`. Calls `updateRGBFilterOptions()` at the end to apply the wavelength-ordering constraint.
+
+#### `updateRGBFilterOptions()`
+
+Enforces the constraint **λ_R > λ_G > λ_B** on the R/G/B dropdowns:
+
+1. If the current `state.rgbG` has λ ≥ λ_R, auto-select the longest available filter still below λ_R.
+2. If the current `state.rgbB` has λ ≥ λ_G, do the same for B (longest filter still below λ_G).
+3. Mark every option whose wavelength would violate the constraint as `disabled` (greyed out in the dropdown).
+
+Called whenever any of the R/G/B selectors change so the user cannot pick a non-monotonic combination.
+
+#### `updateRGBMethodUI()`
+
+Shows or hides `#rgb-q-wrap` (the Q slider wrapper) based on `state.rgbMethod`. The Q parameter only matters for the Lupton method, so the slider is hidden when the method is `percentile_asinh`.
 
 #### `updateFilterLabel()`
 
 Updates the `#filter-label` status indicator:
+
 - **Single mode**: shows `"F200W (1.99 µm)"`
 - **RGB mode**: shows `"R:F480M  G:F277W  B:F070W"`
 
@@ -169,7 +197,7 @@ The core render function. Fetches the Plotly figure from the API and renders it:
 
 ```plaintext
 1. If viewMode == "rgb":
-     Build URL: /api/viewer/{datacube}/rgb?r={R}&g={G}&b={B}&softening={Q}&selected={ids}
+     Build URL: /api/viewer/{datacube}/rgb?r={R}&g={G}&b={B}&selected={ids}&method={rgbMethod}&softening={Q}
    Else:
      Build URL: /api/viewer/{datacube}/{channel}?selected={ids}&colorscale={scale}&stretch={stretch}
 2. fetch(url) → JSON response with figure dict
@@ -179,7 +207,7 @@ The core render function. Fetches the Plotly figure from the API and renders it:
 6. Attach plotly_click event handler
 ```
 
-Called whenever: datacube changes, filter changes, colorscale changes, stretch changes, view mode changes, RGB channels change, Q slider moves (debounced), clump selection changes, or centroids toggled.
+Called whenever: datacube changes, filter changes, colorscale changes, stretch changes, view mode changes, RGB channels change, RGB method changes, Q slider moves (debounced, Lupton only), clump selection changes, or centroids toggled.
 
 #### `onViewerClick(eventData)`
 

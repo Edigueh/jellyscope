@@ -5,7 +5,7 @@ The visualization layer builds Plotly figure dictionaries from data. These dicts
 **Files covered**:
 
 - [visualization/image_viewer.py](../src/jellyscope/visualization/image_viewer.py) — Galaxy heatmap + clump overlays
-- [visualization/rgb_composite.py](../src/jellyscope/visualization/rgb_composite.py) — Lupton et al. (2004) RGB composite
+- [visualization/rgb_composite.py](../src/jellyscope/visualization/rgb_composite.py) — RGB composite (percentile+asinh and Lupton)
 - [visualization/spectrum_plot.py](../src/jellyscope/visualization/spectrum_plot.py) — SED line plots
 - [visualization/properties_panel.py](../src/jellyscope/visualization/properties_panel.py) — Property formatting
 
@@ -224,11 +224,40 @@ This dict is sent to the frontend, where `app.js` renders it as an HTML table:
 
 **Location**: `src/jellyscope/visualization/rgb_composite.py`
 
-Implements the Lupton et al. (2004) color-preserving RGB mapping. The key insight: apply the intensity stretch to total intensity I = (R+G+B)/3, then scale each band by f(I)/I. This ensures an object's color in the output depends only on its flux ratios, not its brightness.
+The module offers two RGB composite methods, selectable at call time:
+
+- **`percentile_asinh`** (default) — per-band median subtract, percentile clip, asinh stretch, pedestal cut. Not strictly color-preserving, but produces clean, deep-field-style images. Recipe contributed by Andressa.
+- **`lupton`** — Lupton et al. (2004) Eq. 2 color-preserving mapping. The output color of an object depends only on its flux ratios, not its brightness.
+
+### `RGBMethod` type alias
+
+```python
+RGBMethod = Literal["percentile_asinh", "lupton"]
+```
+
+Used by `build_rgb_figure` and the corresponding FastAPI endpoint to dispatch between the two methods.
+
+### `percentile_asinh_composite(r_data, g_data, b_data, pmin=10.0, pmax=99.9, scale=0.1, floor=0.05, weights=(1.0, 1.02, 1.02)) -> np.ndarray`
+
+Per-band, independent stretch pipeline.
+
+**Parameters**:
+
+| Param | Type | Description |
+| ------- | ------ | ------------- |
+| `r_data`, `g_data`, `b_data` | `np.ndarray` | 2D flux arrays |
+| `pmin`, `pmax` | `float` | Percentile bounds for the linear clip (in percent) |
+| `scale` | `float` | asinh softening; smaller boosts faint features more |
+| `floor` | `float` | Pedestal cut applied after the stretch — pixels below become 0 |
+| `weights` | `tuple[float, float, float]` | Per-channel multipliers `(wR, wG, wB)` applied at the end |
+
+**Algorithm** (per band, then combined): median-subtract → percentile-clip to `[pmin, pmax]` → asinh stretch via `arcsinh(y/scale) / arcsinh(1/scale)` → floor cut → channel weight. NaN-safe: any pixel non-finite in any band becomes black.
+
+The actual per-band work is done by the private helper `_normalize_band_asinh`.
 
 ### `lupton_rgb_composite(r_data, g_data, b_data, softening=8.0, alpha=None) -> np.ndarray`
 
-Core algorithm (Equation 2 of the paper).
+Lupton et al. (2004) Eq. 2.
 
 **Parameters**:
 
@@ -252,9 +281,21 @@ Core algorithm (Equation 2 of the paper).
 8. Global normalization to [0,1] using 99.5th percentile
 9. Return uint8 array of shape `(ny, nx, 3)`
 
-### `build_rgb_figure(datacube, r_index, g_index, b_index, clumps, ...) -> dict`
+### `build_rgb_figure(datacube, r_index, g_index, b_index, clumps, selected_ids=None, method="percentile_asinh", softening=8.0, alpha=None) -> dict`
 
 Assembles the Plotly figure with RGB image + clump overlays.
+
+**Parameters**:
+
+| Param | Type | Description |
+| ------- | ------ | ------------- |
+| `datacube` | `DataCube` | Datacube to visualize |
+| `r_index`, `g_index`, `b_index` | `int` | Channel indices for the R, G, B bands |
+| `clumps` | `ClumpCatalog` | Clump catalog for overlays |
+| `selected_ids` | `list[int] \| None` | Clumps to highlight in red |
+| `method` | `RGBMethod` | `"percentile_asinh"` (default) or `"lupton"` |
+| `softening` | `float` | Lupton Q — only used when `method="lupton"` |
+| `alpha` | `float \| None` | Lupton linear stretch factor — only used when `method="lupton"` |
 
 **Coordinate system note**: Plotly's `go.Image` renders array row 0 at the top (y-axis increases downward), while heatmaps render row 0 at the bottom. To match single-band visual orientation:
 

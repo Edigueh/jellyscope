@@ -29,6 +29,9 @@ NIRCAM_WAVELENGTHS: dict[str, float] = {
     "F480M": 4.834,
 }
 
+# Default RGB filter assignment.
+DEFAULT_RGB: dict[str, str] = {"r": "F200W", "g": "F115W", "b": "F090W"}
+
 
 class JellyscopeConfig(BaseModel):
     """Configuration for the Jellyscope application.
