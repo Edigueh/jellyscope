@@ -1,7 +1,7 @@
 """Plotly figure builders for spectral energy distribution (SED) plots."""
 
 
-def create_sed_figure(spectrum: dict, title: str = "Spectral Energy Distribution") -> dict:
+def create_sed_figure(spectrum: dict) -> dict:
     """Create a Plotly scatter plot of flux vs wavelength.
 
     Args:
@@ -53,7 +53,6 @@ def create_sed_figure(spectrum: dict, title: str = "Spectral Energy Distribution
         )
 
     layout = {
-        "title": {"text": title, "font": {"color": "#cccccc"}},
         "xaxis": {
             "title": "Wavelength (\u00b5m)",
             "gridcolor": "#333",
@@ -67,7 +66,7 @@ def create_sed_figure(spectrum: dict, title: str = "Spectral Energy Distribution
         "plot_bgcolor": "#1a1a2e",
         "paper_bgcolor": "#16213e",
         "font": {"color": "#cccccc"},
-        "margin": {"l": 60, "r": 20, "t": 40, "b": 50},
+        "margin": {"l": 60, "r": 20, "t": 10, "b": 50},
         "showlegend": False,
     }
 
@@ -108,7 +107,6 @@ def create_multi_sed_figure(spectra: list[dict], labels: list[str]) -> dict:
         )
 
     layout = {
-        "title": {"text": "SED Comparison", "font": {"color": "#cccccc"}},
         "xaxis": {
             "title": "Wavelength (\u00b5m)",
             "gridcolor": "#333",
@@ -122,7 +120,7 @@ def create_multi_sed_figure(spectra: list[dict], labels: list[str]) -> dict:
         "plot_bgcolor": "#1a1a2e",
         "paper_bgcolor": "#16213e",
         "font": {"color": "#cccccc"},
-        "margin": {"l": 60, "r": 20, "t": 40, "b": 50},
+        "margin": {"l": 60, "r": 20, "t": 10, "b": 50},
         "legend": {"font": {"color": "#cccccc"}},
     }
 

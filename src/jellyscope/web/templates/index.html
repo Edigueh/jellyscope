@@ -27,8 +27,8 @@
 
                 <label for="stretch-select">Stretch:</label>
                 <select id="stretch-select">
-                    <option value="log" selected>Log</option>
-                    <option value="lupton_asinh">Asinh (Lupton)</option>
+                    <option value="lupton_asinh" selected>Asinh (Lupton)</option>
+                    <option value="log">Log</option>
                     <option value="power">Power</option>
                 </select>
 
@@ -88,6 +88,9 @@
             <div id="galaxy-viewer"></div>
         </section>
 
+        <!-- Resizer between viewer and right column -->
+        <div id="sidebar-resizer" title="Drag to resize"></div>
+
         <!-- Right panels -->
         <aside id="right-panels">
             <!-- Properties -->
@@ -110,12 +113,22 @@
                 <div id="clump-list"></div>
             </section>
 
+            <div id="clump-sed-resizer" title="Drag to resize"></div>
+
+            {% if enable_sed %}
+            <!-- Spectrum -->
+            <section id="spectrum-panel">
+                <h2>Spectral Energy Distribution</h2>
+                <div id="spectrum-plot"></div>
+            </section>
+            {% endif %}
         </aside>
     </main>
 
     <script>
         const FILTERS = {{ filters | tojson | safe }};
         const WAVELENGTHS = {{ wavelengths | tojson | safe }};
+        const FEATURES = { sed: {{ enable_sed | tojson }} };
     </script>
     <script src="{{ url_for('static', path='app.js') }}"></script>
 </body>

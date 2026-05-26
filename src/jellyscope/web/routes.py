@@ -40,6 +40,11 @@ def _store() -> DataStore:
     return DataStore.get()
 
 
+def _require_sed_enabled(request: Request) -> None:
+    if not request.app.state.config.enable_sed:
+        raise HTTPException(status_code=404, detail="SED disabled")
+
+
 # Pages.
 @router.get("/", response_class=HTMLResponse)
 def index(request: Request) -> Response:
@@ -51,6 +56,7 @@ def index(request: Request) -> Response:
             "datacubes": store.list_datacubes(),
             "filters": store.get_datacube("nircam").filter_names,
             "wavelengths": NIRCAM_WAVELENGTHS,
+            "enable_sed": request.app.state.config.enable_sed,
         },
     )
 
@@ -172,11 +178,12 @@ def get_clump(clump_id: int) -> ClumpDetailResponse:
 
 
 @router.get("/api/clumps/{clump_id}/spectrum/{datacube_name}", response_model=SpectrumResponse)
-def get_clump_spectrum(clump_id: int, datacube_name: str) -> SpectrumResponse:
+def get_clump_spectrum(clump_id: int, datacube_name: str, request: Request) -> SpectrumResponse:
+    _require_sed_enabled(request)
     store = _store()
     dc = store.get_datacube(datacube_name)
     spectrum = extract_clump_spectrum(dc, store.clumps, clump_id)
-    figure = create_sed_figure(spectrum, f"Clump {clump_id} — SED")
+    figure = create_sed_figure(spectrum)
     return SpectrumResponse(spectrum=spectrum, figure=figure)
 
 
@@ -189,17 +196,21 @@ def get_pixel_clump(x: int, y: int) -> PixelClumpResponse:
 
 
 @router.get("/api/pixel/{x}/{y}/spectrum/{datacube_name}", response_model=SpectrumResponse)
-def get_pixel_spectrum(x: int, y: int, datacube_name: str) -> SpectrumResponse:
+def get_pixel_spectrum(x: int, y: int, datacube_name: str, request: Request) -> SpectrumResponse:
+    _require_sed_enabled(request)
     store = _store()
     dc = store.get_datacube(datacube_name)
     spectrum = extract_pixel_spectrum(dc, x, y)
-    figure = create_sed_figure(spectrum, f"Pixel ({x}, {y}) — SED")
+    figure = create_sed_figure(spectrum)
     return SpectrumResponse(spectrum=spectrum, figure=figure)
 
 
 # Region selection.
 @router.post("/api/region/spectrum/{datacube_name}", response_model=SpectrumResponse)
-def get_region_spectrum(datacube_name: str, body: RegionRequest) -> SpectrumResponse:
+def get_region_spectrum(
+    datacube_name: str, body: RegionRequest, request: Request
+) -> SpectrumResponse:
+    _require_sed_enabled(request)
     store = _store()
     dc = store.get_datacube(datacube_name)
 
@@ -219,13 +230,14 @@ def get_region_spectrum(datacube_name: str, body: RegionRequest) -> SpectrumResp
         mask[y0:y1, x0:x1] = True
 
     spectrum = extract_region_spectrum(dc, mask)
-    figure = create_sed_figure(spectrum, f"Selected Region ({spectrum['n_pixels']} px)")
+    figure = create_sed_figure(spectrum)
     return SpectrumResponse(spectrum=spectrum, figure=figure)
 
 
 # Multi-clump comparison.
 @router.post("/api/compare/spectrum/{datacube_name}", response_model=CompareResponse)
-def compare_spectra(datacube_name: str, body: CompareRequest) -> CompareResponse:
+def compare_spectra(datacube_name: str, body: CompareRequest, request: Request) -> CompareResponse:
+    _require_sed_enabled(request)
     store = _store()
     dc = store.get_datacube(datacube_name)
 
