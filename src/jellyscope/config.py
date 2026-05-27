@@ -50,4 +50,4 @@ class JellyscopeConfig(BaseModel):
     debug: bool = True
     default_colorscale: str = "Viridis"
     filter_wavelengths: dict[str, float] = Field(default_factory=lambda: dict(NIRCAM_WAVELENGTHS))
-    enable_sed: bool = True
+    enable_sed: bool = False
