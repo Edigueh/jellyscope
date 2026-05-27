@@ -18,10 +18,17 @@
         <!-- Left: Galaxy Viewer -->
         <section id="viewer-section">
             <div id="viewer-controls">
+                <label for="dataset-select">Dataset:</label>
+                <select id="dataset-select">
+                    {% for d in datasets %}
+                    <option value="{{ d }}" {% if d == default_dataset %}selected{% endif %}>{{ d }}</option>
+                    {% endfor %}
+                </select>
+
                 <label for="datacube-select">Datacube:</label>
                 <select id="datacube-select">
                     {% for dc in datacubes %}
-                    <option value="{{ dc }}">{{ dc }}</option>
+                    <option value="{{ dc }}" {% if dc == default_datacube %}selected{% endif %}>{{ dc }}</option>
                     {% endfor %}
                 </select>
 
@@ -126,6 +133,9 @@
     </main>
 
     <script>
+        const DATASETS = {{ datasets | tojson | safe }};
+        const DEFAULT_DATASET = {{ default_dataset | tojson | safe }};
+        const DEFAULT_DATACUBE = {{ default_datacube | tojson | safe }};
         const FILTERS = {{ filters | tojson | safe }};
         const WAVELENGTHS = {{ wavelengths | tojson | safe }};
         const FEATURES = { sed: {{ enable_sed | tojson }} };

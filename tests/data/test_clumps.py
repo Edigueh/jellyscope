@@ -14,13 +14,14 @@ class TestClumps:
     @pytest.fixture(autouse=True)
     def setup(self, store: DataStore):
         self.store: DataStore = store
+        self.clumps = store.get_dataset("A2744_F1228").clumps
 
     def test_clump_count(self):
-        assert len(self.store.clumps.list_clumps()) == 23
+        assert len(self.clumps.list_clumps()) == 23
 
     def test_clump_properties(self):
         cid: int = 0
-        c: ClumpProperties = self.store.clumps.get_clump_by_id(cid)
+        c: ClumpProperties = self.clumps.get_clump_by_id(cid)
         assert c.clump_id == cid
         assert c.area_pix == 121
         assert c.component == "outside"
@@ -28,30 +29,30 @@ class TestClumps:
 
     def test_pixel_mask(self):
         cid: int = 0
-        c: ClumpProperties = self.store.clumps.get_clump_by_id(cid)
-        mask: np.ndarray = self.store.clumps.get_pixel_mask(cid)
+        c: ClumpProperties = self.clumps.get_clump_by_id(cid)
+        mask: np.ndarray = self.clumps.get_pixel_mask(cid)
         assert mask.shape == (221, 172)
         assert mask.dtype == bool
         assert mask.sum() == c.area_pix
 
     def test_clump_at_pixel(self):
         # Clump 0 centroid is near (71.8, 19.9)
-        cid: int = self.store.clumps.get_clump_id_at_pixel(72, 20)
+        cid: int = self.clumps.get_clump_id_at_pixel(72, 20)
         assert cid == 0
 
     def test_no_clump_at_empty_pixel(self):
-        cid: int = self.store.clumps.get_clump_id_at_pixel(0, 0)
+        cid: int = self.clumps.get_clump_id_at_pixel(0, 0)
         assert cid is None
 
     def test_boundary_coords(self):
-        boundary: list[tuple[float, float]] = self.store.clumps.get_boundary_coords(0)
+        boundary: list[tuple[float, float]] = self.clumps.get_boundary_coords(0)
         assert len(boundary) >= 3
         # start == end
         assert boundary[0] == boundary[-1]
 
     def test_filter_by_component(self):
-        disk: list[ClumpProperties] = self.store.clumps.filter_clumps(component="disk")
-        outside: list[ClumpProperties] = self.store.clumps.filter_clumps(component="outside")
+        disk: list[ClumpProperties] = self.clumps.filter_clumps(component="disk")
+        outside: list[ClumpProperties] = self.clumps.filter_clumps(component="outside")
         for c in disk:
             logging.info(c.component)
         assert all(c.component == "disk" for c in disk)
@@ -59,8 +60,8 @@ class TestClumps:
         assert len(disk) + len(outside) == 23
 
     def test_filter_by_inside(self):
-        inside: list[ClumpProperties] = self.store.clumps.filter_clumps(inside=True)
-        outside: list[ClumpProperties] = self.store.clumps.filter_clumps(inside=False)
+        inside: list[ClumpProperties] = self.clumps.filter_clumps(inside=True)
+        outside: list[ClumpProperties] = self.clumps.filter_clumps(inside=False)
         for c in inside:
             logging.info(c.component)
         assert all(c.inside is True for c in inside)
@@ -69,22 +70,22 @@ class TestClumps:
 
     def test_combined_mask(self):
         cid1, cid2 = 0, 1
-        c1: ClumpProperties = self.store.clumps.get_clump_by_id(cid1)
-        c2: ClumpProperties = self.store.clumps.get_clump_by_id(cid2)
-        mask: np.ndarray = self.store.clumps.get_combined_mask([cid1, cid2])
+        c1: ClumpProperties = self.clumps.get_clump_by_id(cid1)
+        c2: ClumpProperties = self.clumps.get_clump_by_id(cid2)
+        mask: np.ndarray = self.clumps.get_combined_mask([cid1, cid2])
         assert mask.sum() == c1.area_pix + c2.area_pix
 
     def test_pixel_out_of_bounds(self):
-        assert self.store.clumps.get_clump_id_at_pixel(-1, -1) is None
-        assert self.store.clumps.get_clump_id_at_pixel(9999, 9999) is None
+        assert self.clumps.get_clump_id_at_pixel(-1, -1) is None
+        assert self.clumps.get_clump_id_at_pixel(9999, 9999) is None
 
     def test_boundary_cache_hit(self):
-        b1 = self.store.clumps.get_boundary_coords(0)
-        b2 = self.store.clumps.get_boundary_coords(0)
+        b1 = self.clumps.get_boundary_coords(0)
+        b2 = self.clumps.get_boundary_coords(0)
         assert b1 is b2
 
     def test_get_all_boundaries(self):
-        boundaries = self.store.clumps.get_all_boundaries()
+        boundaries = self.clumps.get_all_boundaries()
         assert len(boundaries.keys()) == 23
 
     def test_small_clump_boundary(self, tmp_path):
@@ -126,14 +127,14 @@ class TestClumps:
         from scipy.spatial import QhullError
 
         # Clear cache to recompute.
-        self.store.clumps._boundaries.pop(0, None)
+        self.clumps._boundaries.pop(0, None)
         with patch("jellyscope.data.model.clumps.ConvexHull", side_effect=QhullError("mock")):
-            boundary = self.store.clumps.get_boundary_coords(0)
+            boundary = self.clumps.get_boundary_coords(0)
             assert len(boundary) >= 2
             assert boundary[0] == boundary[-1]
 
     def test_to_properties_list(self):
-        props: list[dict] = self.store.clumps.to_properties_list()
+        props: list[dict] = self.clumps.to_properties_list()
         assert len(props) == 23
         assert all(isinstance(p, dict) for p in props)
         keys = {

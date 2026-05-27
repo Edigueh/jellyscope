@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from starlette.responses import HTMLResponse, Response
 
 from jellyscope.config import NIRCAM_WAVELENGTHS
-from jellyscope.data.data_store import DataStore
+from jellyscope.data.data_store import Dataset, DataStore
 from jellyscope.model.schemas import (
     ClumpDetailResponse,
     ClumpListItem,
@@ -15,6 +15,7 @@ from jellyscope.model.schemas import (
     CompareRequest,
     CompareResponse,
     DatacubesResponse,
+    DatasetsResponse,
     FilterInfo,
     FiltersResponse,
     PixelClumpResponse,
@@ -40,6 +41,13 @@ def _store() -> DataStore:
     return DataStore.get()
 
 
+def _dataset(name: str) -> Dataset:
+    try:
+        return _store().get_dataset(name)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+
 def _require_sed_enabled(request: Request) -> None:
     if not request.app.state.config.enable_sed:
         raise HTTPException(status_code=404, detail="SED disabled")
@@ -49,28 +57,42 @@ def _require_sed_enabled(request: Request) -> None:
 @router.get("/", response_class=HTMLResponse)
 def index(request: Request) -> Response:
     store = _store()
+    default_dataset = store.default_dataset
+    default_ds = store.get_dataset(default_dataset)
+    # Pick first available datacube of the default dataset for the initial UI.
+    default_datacube = default_ds.list_datacubes()[0]
     return request.app.state.templates.TemplateResponse(  # type: ignore[no-any-return]
         request,
         "index.html",
         {
-            "datacubes": store.list_datacubes(),
-            "filters": store.get_datacube("nircam").filter_names,
+            "datasets": store.list_datasets(),
+            "default_dataset": default_dataset,
+            "default_datacube": default_datacube,
+            "datacubes": default_ds.list_datacubes(),
+            "filters": default_ds.get_datacube(default_datacube).filter_names,
             "wavelengths": NIRCAM_WAVELENGTHS,
             "enable_sed": request.app.state.config.enable_sed,
         },
     )
 
 
-# Datacube info.
-@router.get("/api/datacubes", response_model=DatacubesResponse)
-def list_datacubes() -> DatacubesResponse:
+# Datasets.
+@router.get("/api/datasets", response_model=DatasetsResponse)
+def list_datasets() -> DatasetsResponse:
     store = _store()
-    return DatacubesResponse(datacubes=store.list_datacubes())
+    return DatasetsResponse(datasets=store.list_datasets(), default=store.default_dataset)
 
 
-@router.get("/api/filters/{datacube_name}", response_model=FiltersResponse)
-def list_filters(datacube_name: str) -> FiltersResponse:
-    dc = _store().get_datacube(datacube_name)
+# Datacube info.
+@router.get("/api/datasets/{dataset_name}/datacubes", response_model=DatacubesResponse)
+def list_datacubes(dataset_name: str) -> DatacubesResponse:
+    ds = _dataset(dataset_name)
+    return DatacubesResponse(datacubes=ds.list_datacubes())
+
+
+@router.get("/api/datasets/{dataset_name}/filters/{datacube_name}", response_model=FiltersResponse)
+def list_filters(dataset_name: str, datacube_name: str) -> FiltersResponse:
+    dc = _dataset(dataset_name).get_datacube(datacube_name)
 
     filters: list[FilterInfo] = []
     for i, name in enumerate(dc.filter_names):
@@ -85,8 +107,11 @@ def list_filters(datacube_name: str) -> FiltersResponse:
 
 
 # Image viewer.
-@router.get("/api/viewer/{datacube_name}/rgb", response_model=RGBViewerResponse)
+@router.get(
+    "/api/datasets/{dataset_name}/viewer/{datacube_name}/rgb", response_model=RGBViewerResponse
+)
 def get_rgb_viewer_figure(
+    dataset_name: str,
     datacube_name: str,
     r: Annotated[int, Query(description="Red channel filter index")],
     g: Annotated[int, Query(description="Green channel filter index")],
@@ -95,8 +120,8 @@ def get_rgb_viewer_figure(
     method: Annotated[Literal["percentile_asinh", "lupton"], Query()] = "percentile_asinh",
     softening: Annotated[float, Query()] = 8.0,
 ) -> RGBViewerResponse:
-    store = _store()
-    dc = store.get_datacube(datacube_name)
+    ds = _dataset(dataset_name)
+    dc = ds.get_datacube(datacube_name)
     n_ch = dc.n_channels
     for label, idx in [("r", r), ("g", g), ("b", b)]:
         if not 0 <= idx < n_ch:
@@ -107,8 +132,9 @@ def get_rgb_viewer_figure(
     selected_ids: list[int] = (
         [int(i) for i in selected.split(",") if i.strip()] if selected else []
     )
+    assert ds.clumps is not None
     figure: dict[str, Any] = build_rgb_figure(
-        dc, r, g, b, store.clumps, selected_ids, method=method, softening=softening
+        dc, r, g, b, ds.clumps, selected_ids, method=method, softening=softening
     )
     return RGBViewerResponse(
         figure=figure,
@@ -118,16 +144,20 @@ def get_rgb_viewer_figure(
     )
 
 
-@router.get("/api/viewer/{datacube_name}/{channel_index}", response_model=ViewerResponse)
+@router.get(
+    "/api/datasets/{dataset_name}/viewer/{datacube_name}/{channel_index}",
+    response_model=ViewerResponse,
+)
 def get_viewer_figure(
+    dataset_name: str,
     datacube_name: str,
     channel_index: int,
     selected: Annotated[str, Query()] = "",
     colorscale: Annotated[str, Query()] = "Viridis",
     stretch: Annotated[Literal["log", "lupton_asinh", "power"], Query()] = "log",
 ) -> ViewerResponse:
-    store = _store()
-    dc = store.get_datacube(datacube_name)
+    ds = _dataset(dataset_name)
+    dc = ds.get_datacube(datacube_name)
     if not 0 <= channel_index < dc.n_channels:
         raise HTTPException(
             status_code=400,
@@ -136,20 +166,23 @@ def get_viewer_figure(
     selected_ids: list[int] = (
         [int(i) for i in selected.split(",") if i.strip()] if selected else []
     )
+    assert ds.clumps is not None
     figure: dict[str, Any] = build_viewer_figure(
-        dc, channel_index, store.clumps, selected_ids, colorscale, stretch
+        dc, channel_index, ds.clumps, selected_ids, colorscale, stretch
     )
     return ViewerResponse(figure=figure, filter_name=dc.filter_names[channel_index])
 
 
 # Clumps.
-@router.get("/api/clumps", response_model=ClumpsListResponse)
+@router.get("/api/datasets/{dataset_name}/clumps", response_model=ClumpsListResponse)
 def list_clumps(
+    dataset_name: str,
     component: Annotated[str | None, Query()] = None,
     inside: Annotated[bool | None, Query()] = None,
 ) -> ClumpsListResponse:
-    store = _store()
-    clumps = store.clumps.filter_clumps(component, inside)
+    ds = _dataset(dataset_name)
+    assert ds.clumps is not None
+    clumps = ds.clumps.filter_clumps(component, inside)
     return ClumpsListResponse(
         clumps=[
             ClumpListItem(
@@ -165,11 +198,12 @@ def list_clumps(
     )
 
 
-@router.get("/api/clumps/{clump_id}", response_model=ClumpDetailResponse)
-def get_clump(clump_id: int) -> ClumpDetailResponse:
-    store = _store()
-    clump = store.clumps.get_clump_by_id(clump_id)
-    boundary = store.clumps.get_boundary_coords(clump_id)
+@router.get("/api/datasets/{dataset_name}/clumps/{clump_id}", response_model=ClumpDetailResponse)
+def get_clump(dataset_name: str, clump_id: int) -> ClumpDetailResponse:
+    ds = _dataset(dataset_name)
+    assert ds.clumps is not None
+    clump = ds.clumps.get_clump_by_id(clump_id)
+    boundary = ds.clumps.get_boundary_coords(clump_id)
     props = format_clump_properties(clump)
     return ClumpDetailResponse(
         properties=props,
@@ -177,42 +211,57 @@ def get_clump(clump_id: int) -> ClumpDetailResponse:
     )
 
 
-@router.get("/api/clumps/{clump_id}/spectrum/{datacube_name}", response_model=SpectrumResponse)
-def get_clump_spectrum(clump_id: int, datacube_name: str, request: Request) -> SpectrumResponse:
+@router.get(
+    "/api/datasets/{dataset_name}/clumps/{clump_id}/spectrum/{datacube_name}",
+    response_model=SpectrumResponse,
+)
+def get_clump_spectrum(
+    dataset_name: str, clump_id: int, datacube_name: str, request: Request
+) -> SpectrumResponse:
     _require_sed_enabled(request)
-    store = _store()
-    dc = store.get_datacube(datacube_name)
-    spectrum = extract_clump_spectrum(dc, store.clumps, clump_id)
+    ds = _dataset(dataset_name)
+    dc = ds.get_datacube(datacube_name)
+    assert ds.clumps is not None
+    spectrum = extract_clump_spectrum(dc, ds.clumps, clump_id)
     figure = create_sed_figure(spectrum)
     return SpectrumResponse(spectrum=spectrum, figure=figure)
 
 
 # Pixel Interaction.
-@router.get("/api/pixel/{x}/{y}/clump", response_model=PixelClumpResponse)
-def get_pixel_clump(x: int, y: int) -> PixelClumpResponse:
-    store = _store()
-    cid = store.clumps.get_clump_id_at_pixel(x, y)
+@router.get("/api/datasets/{dataset_name}/pixel/{x}/{y}/clump", response_model=PixelClumpResponse)
+def get_pixel_clump(dataset_name: str, x: int, y: int) -> PixelClumpResponse:
+    ds = _dataset(dataset_name)
+    assert ds.clumps is not None
+    cid = ds.clumps.get_clump_id_at_pixel(x, y)
     return PixelClumpResponse(clump_id=cid)
 
 
-@router.get("/api/pixel/{x}/{y}/spectrum/{datacube_name}", response_model=SpectrumResponse)
-def get_pixel_spectrum(x: int, y: int, datacube_name: str, request: Request) -> SpectrumResponse:
+@router.get(
+    "/api/datasets/{dataset_name}/pixel/{x}/{y}/spectrum/{datacube_name}",
+    response_model=SpectrumResponse,
+)
+def get_pixel_spectrum(
+    dataset_name: str, x: int, y: int, datacube_name: str, request: Request
+) -> SpectrumResponse:
     _require_sed_enabled(request)
-    store = _store()
-    dc = store.get_datacube(datacube_name)
+    ds = _dataset(dataset_name)
+    dc = ds.get_datacube(datacube_name)
     spectrum = extract_pixel_spectrum(dc, x, y)
     figure = create_sed_figure(spectrum)
     return SpectrumResponse(spectrum=spectrum, figure=figure)
 
 
 # Region selection.
-@router.post("/api/region/spectrum/{datacube_name}", response_model=SpectrumResponse)
+@router.post(
+    "/api/datasets/{dataset_name}/region/spectrum/{datacube_name}",
+    response_model=SpectrumResponse,
+)
 def get_region_spectrum(
-    datacube_name: str, body: RegionRequest, request: Request
+    dataset_name: str, datacube_name: str, body: RegionRequest, request: Request
 ) -> SpectrumResponse:
     _require_sed_enabled(request)
-    store = _store()
-    dc = store.get_datacube(datacube_name)
+    ds = _dataset(dataset_name)
+    dc = ds.get_datacube(datacube_name)
 
     mask = np.zeros(dc.spatial_shape, dtype=bool)
 
@@ -235,18 +284,24 @@ def get_region_spectrum(
 
 
 # Multi-clump comparison.
-@router.post("/api/compare/spectrum/{datacube_name}", response_model=CompareResponse)
-def compare_spectra(datacube_name: str, body: CompareRequest, request: Request) -> CompareResponse:
+@router.post(
+    "/api/datasets/{dataset_name}/compare/spectrum/{datacube_name}",
+    response_model=CompareResponse,
+)
+def compare_spectra(
+    dataset_name: str, datacube_name: str, body: CompareRequest, request: Request
+) -> CompareResponse:
     _require_sed_enabled(request)
-    store = _store()
-    dc = store.get_datacube(datacube_name)
+    ds = _dataset(dataset_name)
+    dc = ds.get_datacube(datacube_name)
+    assert ds.clumps is not None
 
     spectra = []
     labels = []
     for cid in body.clump_ids:
-        spec = extract_clump_spectrum(dc, store.clumps, cid)
+        spec = extract_clump_spectrum(dc, ds.clumps, cid)
         spectra.append(spec)
-        c = store.clumps.get_clump_by_id(cid)
+        c = ds.clumps.get_clump_by_id(cid)
         labels.append(f"Clump {cid} ({c.component})")
 
     figure = create_multi_sed_figure(spectra, labels)

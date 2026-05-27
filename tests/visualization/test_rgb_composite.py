@@ -1,8 +1,14 @@
 """Tests for the RGB composite algorithms."""
 
-import numpy as np
+import base64
+import io
 
+import numpy as np
+from PIL import Image as PILImage
+
+from jellyscope.data.data_store import DataStore
 from jellyscope.visualization.rgb_composite import (
+    build_rgb_figure,
     lupton_rgb_composite,
     percentile_asinh_composite,
 )
@@ -152,3 +158,92 @@ class TestPercentileAsinhComposite:
         boosted = percentile_asinh_composite(r, g, b, weights=(2.0, 1.0, 1.0))
         # Boosting R by 2x should not decrease the R channel anywhere.
         assert (boosted[..., 0] >= baseline[..., 0]).all()
+
+
+class TestBuildRGBFigure:
+    """Figure assembly: invisible heatmap click target + layout.images PNG."""
+
+    def _build(self, store: DataStore, method: str = "percentile_asinh") -> dict:
+        dataset_name = store.list_datasets()[0]
+        dataset = store.get_dataset(dataset_name)
+        datacube_name = dataset.list_datacubes()[0]
+        datacube = dataset.get_datacube(datacube_name)
+        clumps = store.get_clumps(dataset_name)
+        nchan = datacube.n_channels
+        return build_rgb_figure(
+            datacube,
+            r_index=min(nchan - 1, 2),
+            g_index=min(nchan - 1, 1),
+            b_index=0,
+            clumps=clumps,
+            method=method,
+        )
+
+    def test_data0_is_invisible_heatmap(self, store: DataStore):
+        fig = self._build(store)
+        d0 = fig["data"][0]
+        assert d0["type"] == "heatmap"
+        assert d0["opacity"] == 0
+        assert d0["showscale"] is False
+
+    def test_layout_images_png_annotation(self, store: DataStore):
+        fig = self._build(store)
+        images = fig["layout"]["images"]
+        assert len(images) == 1
+        img = images[0]
+        assert img["xref"] == "x"
+        assert img["yref"] == "y"
+        assert img["sizing"] == "stretch"
+        assert img["x"] == 0
+        assert img["y"] == 0
+        assert img["source"].startswith("data:image/png;base64,")
+
+    def test_no_yaxis_autorange_reversed(self, store: DataStore):
+        fig = self._build(store)
+        yaxis = fig["layout"]["yaxis"]
+        assert yaxis.get("autorange") != "reversed"
+
+    def test_png_dimensions_match_datacube(self, store: DataStore):
+        fig = self._build(store)
+        dataset = store.get_dataset(store.list_datasets()[0])
+        datacube = dataset.get_datacube(dataset.list_datacubes()[0])
+        ny, nx = datacube.spatial_shape
+        img = fig["layout"]["images"][0]
+        assert img["sizex"] == nx
+        assert img["sizey"] == ny
+        # Decode PNG and confirm dimensions.
+        b64 = img["source"].removeprefix("data:image/png;base64,")
+        png_bytes = base64.b64decode(b64)
+        png = PILImage.open(io.BytesIO(png_bytes))
+        assert png.size == (nx, ny)
+
+    def test_centroid_y_is_raw_fits_y(self, store: DataStore):
+        """Regression: triple-flip set centroid y to ny-1-y0. Ensure raw y0 is used."""
+        fig = self._build(store)
+        clumps = store.get_clumps(store.list_datasets()[0])
+        clump_list = clumps.list_clumps()
+        if not clump_list:
+            return  # nothing to assert
+        # Centroid trace is the last data entry.
+        centroids = fig["data"][-1]
+        # Expected y values are raw y0 from each clump, in catalog order.
+        expected_ys = [c.y0 for c in clump_list]
+        assert list(centroids["y"]) == expected_ys
+
+    def test_data_order_preserves_clickable_first(self, store: DataStore):
+        """app.js relies on data[0] being the click target; centroids are last."""
+        fig = self._build(store)
+        assert fig["data"][0]["type"] == "heatmap"
+        # Last trace must be the centroid scatter so fig.data.pop() in JS toggles it.
+        assert fig["data"][-1].get("name") == "Centroids"
+
+    def test_lupton_method_path(self, store: DataStore):
+        fig = self._build(store, method="lupton")
+        assert fig["data"][0]["type"] == "heatmap"
+        assert fig["layout"]["images"][0]["source"].startswith("data:image/png;base64,")
+
+    def test_image_yanchor_bottom(self, store: DataStore):
+        """Image bottom must anchor at y=0 so it occupies y∈[0, ny] with overlays."""
+        fig = self._build(store)
+        img = fig["layout"]["images"][0]
+        assert img["yanchor"] == "bottom"

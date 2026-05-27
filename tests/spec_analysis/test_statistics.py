@@ -6,7 +6,8 @@ from jellyscope.spec_analysis.stats import compute_clump_summary, compute_region
 
 
 def test_region_stats_normal(store):
-    dc = store.get_datacube("nircam")
+    ds = store.get_dataset("A2744_F1228")
+    dc = ds.get_datacube("nircam")
     mask = np.zeros(dc.spatial_shape, dtype=bool)
     mask[50:60, 50:60] = True
     stats = compute_region_stats(dc, mask, 0)
@@ -21,7 +22,8 @@ def test_region_stats_normal(store):
 
 
 def test_region_stats_empty(store):
-    dc = store.get_datacube("nircam")
+    ds = store.get_dataset("A2744_F1228")
+    dc = ds.get_datacube("nircam")
     mask = np.zeros(dc.spatial_shape, dtype=bool)
     stats = compute_region_stats(dc, mask, 0)
     assert stats["n_pixels"] == 0
@@ -34,8 +36,9 @@ def test_region_stats_empty(store):
 
 
 def test_clump_summary(store):
-    dc = store.get_datacube("nircam")
-    summary = compute_clump_summary(dc, store.clumps, 0)
+    ds = store.get_dataset("A2744_F1228")
+    dc = ds.get_datacube("nircam")
+    summary = compute_clump_summary(dc, ds.clumps, 0)
     assert summary["clump_id"] == 0
     assert summary["component"] == "outside"
     assert summary["area_pix"] == 121

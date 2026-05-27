@@ -1,55 +1,120 @@
-"""Data store: pre-loads and caches datacubes and clump catalog offering a cache mechanism."""
+"""Data store: discovers and caches datasets (datacubes + clump catalogs)."""
 
+import logging
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from jellyscope.config import JellyscopeConfig
 from jellyscope.data.model.clumps import ClumpCatalog
 from jellyscope.data.model.datacube import DataCube
 
+logger = logging.getLogger(__name__)
 
-class DataStore:
-    """DataStore is a singleton that holds loaded datacubes and clump catalogs in memory."""
+NIRCAM = "nircam"
+NIRCAM_MATCHED = "nircam_matched"
+DEFAULT_DATASET = "default"
 
-    _instance: "DataStore | None" = None
 
-    def __init__(self, config: JellyscopeConfig) -> None:
-        nircam_datacube: str = "nircam"
-        self.config: JellyscopeConfig = config
-        data: Path = config.data_dir
+@dataclass
+class Dataset:
+    """A self-contained dataset: one or more datacubes + a clump catalog."""
 
-        self.datacubes: dict[str, DataCube] = {}
-        self._load_datacube(data / config.datacube_file, nircam_datacube)
-        self._load_datacube(data / config.datacube_matched_file, f"{nircam_datacube}_matched")
-
-        if nircam_datacube not in self.datacubes:
-            raise FileNotFoundError(
-                f"Required datacube file not found: {data / config.datacube_file}"
-            )
-
-        # Currently using this datacube as only reference of data.
-        ref_datacube: DataCube = self.datacubes[nircam_datacube]
-        self.clumps = ClumpCatalog(
-            data / config.clumps_properties_file,
-            data / config.clumps_pixels_file,
-            ref_datacube.spatial_shape,
-        )
-
-    def _load_datacube(self, path: Path, name: str) -> None:
-        if path.exists():
-            self.datacubes[name] = DataCube(path)
+    name: str
+    datacubes: dict[str, DataCube] = field(default_factory=dict)
+    clumps: ClumpCatalog | None = None
 
     def get_datacube(self, name: str) -> DataCube:
         if name not in self.datacubes:
             raise KeyError(
-                f"Unknown datacube '{name}'. Available datacubes are: {list(self.datacubes)}"
+                f"Unknown datacube '{name}' in dataset '{self.name}'. "
+                f"Available: {list(self.datacubes)}"
             )
         return self.datacubes[name]
 
     def list_datacubes(self) -> list[str]:
         return list(self.datacubes.keys())
 
-    def get_datacubes(self) -> dict[str, DataCube]:
-        return self.datacubes
+
+class DataStore:
+    """Singleton holding all discovered datasets in memory."""
+
+    _instance: "DataStore | None" = None
+
+    def __init__(self, config: JellyscopeConfig) -> None:
+        self.config: JellyscopeConfig = config
+        self.datasets: dict[str, Dataset] = {}
+
+        data_dir: Path = config.data_dir
+        if not data_dir.exists():
+            raise FileNotFoundError(f"data_dir does not exist: {data_dir}")
+
+        # Discover subdirectory-based datasets first.
+        for sub in sorted(p for p in data_dir.iterdir() if p.is_dir()):
+            ds = self._try_load_dataset(sub, name=sub.name)
+            if ds is not None:
+                self.datasets[ds.name] = ds
+
+        # Backward-compat: flat layout — root data_dir as a single dataset.
+        if not self.datasets:
+            ds = self._try_load_dataset(data_dir, name=DEFAULT_DATASET)
+            if ds is not None:
+                self.datasets[ds.name] = ds
+
+        if not self.datasets:
+            raise FileNotFoundError(
+                f"No valid datasets found under {data_dir}. "
+                f"Each dataset needs the matched FITS cube and both clump CSVs."
+            )
+
+        self.default_dataset: str = next(iter(self.datasets))
+
+    def _try_load_dataset(self, root: Path, name: str) -> Dataset | None:
+        """Try to build a Dataset from `root`. Returns None if requirements unmet."""
+        cfg = self.config
+        ds = Dataset(name=name)
+
+        base_path = root / cfg.datacube_file
+        matched_path = root / cfg.datacube_matched_file
+        if base_path.exists():
+            ds.datacubes[NIRCAM] = DataCube(base_path)
+        if matched_path.exists():
+            ds.datacubes[NIRCAM_MATCHED] = DataCube(matched_path)
+
+        if not ds.datacubes:
+            logger.warning("Skipping '%s': no datacube files found", root)
+            return None
+
+        props_path = root / cfg.clumps_properties_file
+        pixels_path = root / cfg.clumps_pixels_file
+        if not props_path.exists() or not pixels_path.exists():
+            logger.warning("Skipping '%s': missing clump CSVs", root)
+            return None
+
+        # Use the base nircam cube as reference if present, otherwise matched.
+        ref = ds.datacubes.get(NIRCAM) or ds.datacubes[NIRCAM_MATCHED]
+        ds.clumps = ClumpCatalog(props_path, pixels_path, ref.spatial_shape)
+        return ds
+
+    # Dataset access.
+    def list_datasets(self) -> list[str]:
+        return list(self.datasets.keys())
+
+    def get_dataset(self, name: str) -> Dataset:
+        if name not in self.datasets:
+            raise KeyError(f"Unknown dataset '{name}'. Available: {list(self.datasets)}")
+        return self.datasets[name]
+
+    # Datacube/clump access scoped to a dataset.
+    def get_datacube(self, dataset_name: str, datacube_name: str) -> DataCube:
+        return self.get_dataset(dataset_name).get_datacube(datacube_name)
+
+    def list_datacubes(self, dataset_name: str) -> list[str]:
+        return self.get_dataset(dataset_name).list_datacubes()
+
+    def get_clumps(self, dataset_name: str) -> ClumpCatalog:
+        ds = self.get_dataset(dataset_name)
+        assert ds.clumps is not None
+        return ds.clumps
 
     @classmethod
     def get(cls, config: JellyscopeConfig | None = None) -> "DataStore":

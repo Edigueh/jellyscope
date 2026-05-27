@@ -9,9 +9,12 @@ Two methods are provided:
   mapping where an object's RGB color depends only on its flux ratios.
 """
 
+import base64
+import io
 from typing import Any, Literal
 
 import numpy as np
+from PIL import Image as PILImage
 
 from jellyscope.data.data_store import DataCube
 from jellyscope.data.model.clumps import ClumpCatalog
@@ -163,6 +166,19 @@ def percentile_asinh_composite(
     return (rgb * 255).astype(np.uint8)
 
 
+def _rgb_to_png_data_url(rgb: np.ndarray) -> str:
+    """Encode RGB uint8 array to base64 PNG.
+
+    flipud applied here so the PNG, when placed on a Cartesian y-up axis with
+    y=0, sizey=ny, has FITS row j at axis y=j.
+    """
+    flipped = np.flipud(rgb)
+    img = PILImage.fromarray(flipped, mode="RGB")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+
+
 def build_rgb_figure(
     datacube: DataCube,
     r_index: int,
@@ -175,6 +191,11 @@ def build_rgb_figure(
     alpha: float | None = None,
 ) -> dict[str, Any]:
     """Build a Plotly figure with RGB composite + clump overlays.
+
+    Pixels are rendered via ``layout.images[]`` (PNG annotation) on a Cartesian
+    axis. An invisible ``go.Heatmap`` carries clicks so ``point.y`` arrives at
+    the backend in raw FITS array space. See
+    feedback_plotly_goimage_overlay memory for why ``go.Image`` is rejected.
 
     Args:
         method: ``"percentile_asinh"`` (default) or ``"lupton"``.
@@ -190,21 +211,21 @@ def build_rgb_figure(
     else:
         rgb = percentile_asinh_composite(r_data, g_data, b_data)
 
-    ny = rgb.shape[0]
-    rgb = np.flipud(rgb)
+    ny, nx = rgb.shape[:2]
 
-    image_trace: dict[str, Any] = {
-        "type": "image",
-        "z": rgb.tolist(),
+    click_target: dict[str, Any] = {
+        "type": "heatmap",
+        "z": np.zeros((ny, nx)).tolist(),
+        "showscale": False,
+        "hoverinfo": "skip",
+        "opacity": 0,
+        "colorscale": [[0, "rgba(0,0,0,0)"], [1, "rgba(0,0,0,0)"]],
     }
 
     boundaries = create_clump_boundary_traces(clumps, selected_ids)
-    for trace in boundaries:
-        trace["y"] = [ny - 1 - y for y in trace["y"]]
     centroids = create_centroid_markers(clumps)
-    centroids["y"] = [ny - 1 - y for y in centroids["y"]]
 
-    data: list[dict[str, Any]] = [image_trace, *boundaries, centroids]
+    data: list[dict[str, Any]] = [click_target, *boundaries, centroids]
 
     r_name = datacube.filter_names[r_index]
     g_name = datacube.filter_names[g_index]
@@ -226,13 +247,26 @@ def build_rgb_figure(
             "title": "y (pixels)",
             "gridcolor": _SOFT_BLACK,
             "color": _DARK_GRAY,
-            "autorange": "reversed",
         },
         "plot_bgcolor": _DARK_BLUE,
         "paper_bgcolor": _SOFT_DARK_BLUE,
         "font": {"color": _GRAY},
         "margin": {"l": 50, "r": 20, "t": 40, "b": 50},
         "dragmode": "pan",
+        "images": [
+            {
+                "source": _rgb_to_png_data_url(rgb),
+                "xref": "x",
+                "yref": "y",
+                "x": 0,
+                "y": 0,
+                "yanchor": "bottom",
+                "sizex": nx,
+                "sizey": ny,
+                "sizing": "stretch",
+                "layer": "below",
+            }
+        ],
     }
 
     return {"data": data, "layout": layout}

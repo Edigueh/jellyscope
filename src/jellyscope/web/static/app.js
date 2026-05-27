@@ -14,12 +14,19 @@ function debounce(fn, ms) {
 const DEFAULT_RGB_FILTERS = {r: "F200W", g: "F115W", b: "F090W"};
 
 function defaultRgbIndex(filterName, fallback) {
-    const idx = FILTERS.indexOf(filterName);
+    const idx = currentFilters.indexOf(filterName);
     return idx >= 0 ? idx : fallback;
 }
 
+// Filter state is recomputed when the dataset/datacube changes — keep
+// the active filter list in module scope so the rest of the code can
+// reference it without rereading the DOM. Initialized from the
+// server-injected FILTERS constant, refreshed via the filters endpoint.
+let currentFilters = FILTERS.slice();
+
 const state = {
-    datacube: "nircam",
+    dataset: DEFAULT_DATASET,
+    datacube: DEFAULT_DATACUBE,
     channel: 7, // F200W default
     selectedClumps: new Set(),
     colorscale: "Viridis",
@@ -34,6 +41,75 @@ const state = {
     rgbQ: 8.0,
     rgbMethod: "percentile_asinh",
 };
+
+function dsBase() {
+    return `/api/datasets/${encodeURIComponent(state.dataset)}`;
+}
+
+// Refetch datacubes + filters for the active dataset and rebuild
+// dependent UI. Clears selection and re-renders viewer + clump list.
+async function onDatasetChanged() {
+    const dcResp = await fetch(`${dsBase()}/datacubes`);
+    const dcData = await dcResp.json();
+    const datacubes = dcData.datacubes;
+    const dcSel = document.getElementById("datacube-select");
+    dcSel.innerHTML = "";
+    for (const dc of datacubes) {
+        const opt = document.createElement("option");
+        opt.value = dc;
+        opt.textContent = dc;
+        dcSel.appendChild(opt);
+    }
+    state.datacube = datacubes.includes(state.datacube) ? state.datacube : datacubes[0];
+    dcSel.value = state.datacube;
+
+    const fResp = await fetch(`${dsBase()}/filters/${state.datacube}`);
+    const fData = await fResp.json();
+    currentFilters = fData.filters.map((f) => f.name);
+
+    // Slider bounds may have changed — clamp channel.
+    const slider = document.getElementById("filter-slider");
+    slider.max = String(Math.max(0, currentFilters.length - 1));
+    if (state.channel >= currentFilters.length) state.channel = 0;
+    slider.value = String(state.channel);
+
+    // Rebuild RGB selects against new filter list.
+    rebuildRGBSelects();
+
+    // Stale selection ids are meaningless across datasets.
+    state.selectedClumps.clear();
+
+    updateFilterLabel();
+    await loadClumpList();
+    await renderViewer();
+}
+
+function rebuildRGBSelects() {
+    const selects = ["rgb-r", "rgb-g", "rgb-b"];
+    // Re-derive defaults against the currently-loaded filter set.
+    state.rgbR = defaultRgbIndexFrom(currentFilters, DEFAULT_RGB_FILTERS.r, currentFilters.length - 1);
+    state.rgbG = defaultRgbIndexFrom(currentFilters, DEFAULT_RGB_FILTERS.g, Math.floor(currentFilters.length / 2));
+    state.rgbB = defaultRgbIndexFrom(currentFilters, DEFAULT_RGB_FILTERS.b, 0);
+    const defaults = [state.rgbR, state.rgbG, state.rgbB];
+    selects.forEach((id, idx) => {
+        const sel = document.getElementById(id);
+        sel.innerHTML = "";
+        currentFilters.forEach((name, i) => {
+            const opt = document.createElement("option");
+            opt.value = i;
+            const wl = WAVELENGTHS[name];
+            opt.textContent = wl ? `${name} (${wl} µm)` : name;
+            if (i === defaults[idx]) opt.selected = true;
+            sel.appendChild(opt);
+        });
+    });
+    updateRGBFilterOptions();
+}
+
+function defaultRgbIndexFrom(filterList, filterName, fallback) {
+    const idx = filterList.indexOf(filterName);
+    return idx >= 0 ? idx : fallback;
+}
 
 const plotlyConfig = {
     responsive: true,
@@ -64,7 +140,7 @@ function populateRGBSelects() {
     const defaults = [state.rgbR, state.rgbG, state.rgbB];
     selects.forEach((id, idx) => {
         const sel = document.getElementById(id);
-        FILTERS.forEach((name, i) => {
+        currentFilters.forEach((name, i) => {
             const opt = document.createElement("option");
             opt.value = i;
             const wl = WAVELENGTHS[name];
@@ -80,13 +156,13 @@ function populateRGBSelects() {
 // If current state.rgbG / rgbB violate the constraint, auto-pick the
 // next-longest valid filter beneath the upstream one.
 function updateRGBFilterOptions() {
-    const wlOf = (i) => WAVELENGTHS[FILTERS[i]] ?? -Infinity;
+    const wlOf = (i) => WAVELENGTHS[currentFilters[i]] ?? -Infinity;
 
     // G must have λ < λ_R; if violated, pick the longest filter still < λ_R.
     if (wlOf(state.rgbG) >= wlOf(state.rgbR)) {
         let best = -1;
         let bestWl = -Infinity;
-        FILTERS.forEach((name, i) => {
+        currentFilters.forEach((name, i) => {
             const wl = WAVELENGTHS[name] ?? -Infinity;
             if (wl < wlOf(state.rgbR) && wl > bestWl) {
                 best = i;
@@ -100,7 +176,7 @@ function updateRGBFilterOptions() {
     if (wlOf(state.rgbB) >= wlOf(state.rgbG)) {
         let best = -1;
         let bestWl = -Infinity;
-        FILTERS.forEach((name, i) => {
+        currentFilters.forEach((name, i) => {
             const wl = WAVELENGTHS[name] ?? -Infinity;
             if (wl < wlOf(state.rgbG) && wl > bestWl) {
                 best = i;
@@ -122,7 +198,7 @@ function updateRGBFilterOptions() {
         if (!sel) continue;
         const max = limits[id];
         for (const opt of sel.options) {
-            const wl = WAVELENGTHS[FILTERS[parseInt(opt.value)]] ?? -Infinity;
+            const wl = WAVELENGTHS[currentFilters[parseInt(opt.value)]] ?? -Infinity;
             opt.disabled = !(wl < max);
         }
         sel.value = String(current[id]);
@@ -130,6 +206,11 @@ function updateRGBFilterOptions() {
 }
 
 function setupEventListeners() {
+    document.getElementById("dataset-select").addEventListener("change", async (e) => {
+        state.dataset = e.target.value;
+        await onDatasetChanged();
+    });
+
     document.getElementById("datacube-select").addEventListener("change", (e) => {
         state.datacube = e.target.value;
         renderViewer();
@@ -297,9 +378,9 @@ function setupClumpSedResizer() {
 function updateFilterLabel() {
     const label = document.getElementById("filter-label");
     if (state.viewMode === "rgb") {
-        label.textContent = `R:${FILTERS[state.rgbR]}  G:${FILTERS[state.rgbG]}  B:${FILTERS[state.rgbB]}`;
+        label.textContent = `R:${currentFilters[state.rgbR]}  G:${currentFilters[state.rgbG]}  B:${currentFilters[state.rgbB]}`;
     } else {
-        const name = FILTERS[state.channel];
+        const name = currentFilters[state.channel];
         const wl = WAVELENGTHS[name];
         label.textContent = wl ? `${name} (${wl} µm)` : name;
     }
@@ -328,7 +409,7 @@ function updateRGBMethodUI() {
 // Clump List.
 async function loadClumpList() {
     const filter = document.getElementById("clump-filter");
-    let url = "/api/clumps";
+    let url = `${dsBase()}/clumps`;
     if (filter.value) url += `?component=${filter.value}`;
 
     const resp = await fetch(url);
@@ -375,9 +456,9 @@ async function renderViewer() {
     let url;
 
     if (state.viewMode === "rgb") {
-        url = `/api/viewer/${state.datacube}/rgb?r=${state.rgbR}&g=${state.rgbG}&b=${state.rgbB}&selected=${selectedStr}&method=${state.rgbMethod}&softening=${state.rgbQ}`;
+        url = `${dsBase()}/viewer/${state.datacube}/rgb?r=${state.rgbR}&g=${state.rgbG}&b=${state.rgbB}&selected=${selectedStr}&method=${state.rgbMethod}&softening=${state.rgbQ}`;
     } else {
-        url = `/api/viewer/${state.datacube}/${state.channel}?selected=${selectedStr}&colorscale=${state.colorscale}&stretch=${state.stretch}`;
+        url = `${dsBase()}/viewer/${state.datacube}/${state.channel}?selected=${selectedStr}&colorscale=${state.colorscale}&stretch=${state.stretch}`;
     }
 
     const resp = await fetch(url);
@@ -407,7 +488,7 @@ async function onViewerClick(eventData) {
     const y = Math.round(point.y);
 
     // Check if pixel belongs to a clump.
-    const resp = await fetch(`/api/pixel/${x}/${y}/clump`);
+    const resp = await fetch(`${dsBase()}/pixel/${x}/${y}/clump`);
     const data = await resp.json();
 
     if (data.clump_id !== null) {
@@ -428,7 +509,7 @@ async function onViewerSelected(eventData) {
     if (pixels.length === 0) return;
 
     const myGen = ++spectrumGen;
-    const resp = await fetch(`/api/region/spectrum/${state.datacube}`, {
+    const resp = await fetch(`${dsBase()}/region/spectrum/${state.datacube}`, {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({pixels}),
@@ -481,8 +562,8 @@ async function renderSpectrum(figure, gen) {
 
 async function showClumpDetails(clumpId, gen) {
     const [propsResp, specResp] = await Promise.all([
-        fetch(`/api/clumps/${clumpId}`),
-        fetch(`/api/clumps/${clumpId}/spectrum/${state.datacube}`),
+        fetch(`${dsBase()}/clumps/${clumpId}`),
+        fetch(`${dsBase()}/clumps/${clumpId}/spectrum/${state.datacube}`),
     ]);
 
     if (gen !== undefined && gen !== spectrumGen) return;
@@ -501,7 +582,7 @@ async function showClumpDetails(clumpId, gen) {
 }
 
 async function showMultiClumpComparison(clumpIds, gen) {
-    const resp = await fetch(`/api/compare/spectrum/${state.datacube}`, {
+    const resp = await fetch(`${dsBase()}/compare/spectrum/${state.datacube}`, {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({clump_ids: clumpIds}),
@@ -517,7 +598,7 @@ async function showMultiClumpComparison(clumpIds, gen) {
 }
 
 async function showPixelSpectrum(x, y, gen) {
-    const resp = await fetch(`/api/pixel/${x}/${y}/spectrum/${state.datacube}`);
+    const resp = await fetch(`${dsBase()}/pixel/${x}/${y}/spectrum/${state.datacube}`);
     if (gen !== undefined && gen !== spectrumGen) return;
     const data = await resp.json();
     await renderSpectrum(data.figure, gen);

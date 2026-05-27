@@ -13,6 +13,7 @@ repos:
         additional_dependencies:
           - numpy>=1.26
           - pandas-stubs
+          - types-Pillow
           - fastapi>=0.115
           - pydantic>=2.9
           - httpx>=0.27

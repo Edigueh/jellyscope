@@ -15,7 +15,8 @@ class TestDatacube:
     @pytest.fixture(autouse=True)
     def setup(self, store: DataStore):
         self.store: DataStore = store
-        self.dc: DataCube = store.get_datacube("nircam")
+        self.ds = store.get_dataset("A2744_F1228")
+        self.dc: DataCube = self.ds.get_datacube("nircam")
 
     def test_datacube_loads_shape(self):
         assert self.dc.shape == (20, 221, 172)
@@ -48,8 +49,8 @@ class TestDatacube:
         assert all(isinstance(v, float | type(None)) for v in json[0])
 
     def test_both_datacubes_available(self):
-        assert "nircam" in self.store.list_datacubes()
-        assert "nircam_matched" in self.store.list_datacubes()
+        assert "nircam" in self.ds.list_datacubes()
+        assert "nircam_matched" in self.ds.list_datacubes()
 
     def test_get_slice_out_of_range(self):
         with pytest.raises(IndexError, match="out of range"):
@@ -89,10 +90,10 @@ class TestDatacube:
 
     def test_get_datacube_unknown_name(self):
         with pytest.raises(KeyError, match="Unknown datacube"):
-            self.store.get_datacube("nonexistent")
+            self.ds.get_datacube("nonexistent")
 
     def test_get_datacubes_returns_dict(self):
-        cubes = self.store.get_datacubes()
+        cubes = self.ds.datacubes
         assert isinstance(cubes, dict)
         assert "nircam" in cubes
         assert "nircam_matched" in cubes

@@ -60,6 +60,13 @@ class DatacubesResponse(BaseModel):
     datacubes: list[str]
 
 
+class DatasetsResponse(BaseModel):
+    """List of available dataset names plus the default selection."""
+
+    datasets: list[str]
+    default: str
+
+
 class FiltersResponse(BaseModel):
     """List of filters for a datacube."""
 
