@@ -1,0 +1,41 @@
+# ---- Builder stage ----------------------------------------------------------
+FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim AS builder
+
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PYTHON_DOWNLOADS=never
+
+WORKDIR /app
+
+# Install dependencies first (cacheable layer that does not include source).
+COPY pyproject.toml uv.lock README.md ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-install-project --no-dev
+
+# Install the project itself.
+COPY src ./src
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev
+
+# ---- Runtime stage ----------------------------------------------------------
+FROM python:3.13-slim AS runtime
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH="/app/.venv/bin:$PATH"
+
+# Non-root user
+RUN groupadd --system --gid 1000 jellyscope \
+    && useradd --system --uid 1000 --gid jellyscope --create-home --shell /usr/sbin/nologin jellyscope
+
+WORKDIR /app
+
+COPY --from=builder --chown=jellyscope:jellyscope /app/.venv /app/.venv
+COPY --from=builder --chown=jellyscope:jellyscope /app/src /app/src
+
+USER jellyscope
+
+EXPOSE 5000
+
+ENTRYPOINT ["jellyscope"]
+CMD ["--host", "0.0.0.0", "--port", "5000", "--data-dir", "/data"]

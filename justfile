@@ -51,6 +51,26 @@ serve:
 serve-dev:
     uv run uvicorn jellyscope.web:create_app --factory --reload --host 127.0.0.1 --port 5000
 
+# Build the Docker image
+docker-build:
+    docker compose build
+
+# Seed the jellyscope-data volume from local ./data (run once)
+docker-seed:
+    docker run --rm -v jellyscope-data:/data -v "$PWD/data":/src alpine sh -c "cp -r /src/. /data/"
+
+# Start the containerized service (detached)
+docker-up:
+    docker compose up -d
+
+# Stop and remove the containerized service
+docker-down:
+    docker compose down
+
+# Tail logs from the running container
+docker-logs:
+    docker compose logs -f jellyscope
+
 # Clean build artifacts
 clean:
     rm -rf .ruff_cache .mypy_cache .pytest_cache htmlcov .coverage dist build *.egg-info

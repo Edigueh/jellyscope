@@ -42,7 +42,7 @@ def lupton_rgb_composite(
 ) -> np.ndarray:
     """Create an RGB composite using Lupton et al. (2004) Eq. 2.
 
-    The key insight: apply the stretch to the total intensity I, then scale
+    Apply the stretch to the total intensity I, then scale
     each band by f(I)/I. This preserves color regardless of brightness.
 
     Args:
@@ -139,8 +139,7 @@ def percentile_asinh_composite(
     """Per-band percentile + asinh stretch composite (Andressa's recipe).
 
     Each band is independently background-subtracted (median), percentile-clipped,
-    asinh-stretched, and pedestal-cut, then weighted. Not color-preserving in the
-    Lupton sense, but produces a clean image for deep-field NIRCam data.
+    asinh-stretched, and pedestal-cut, then weighted.
 
     Args:
         r_data, g_data, b_data: 2D flux arrays.
@@ -194,8 +193,7 @@ def build_rgb_figure(
 
     Pixels are rendered via ``layout.images[]`` (PNG annotation) on a Cartesian
     axis. An invisible ``go.Heatmap`` carries clicks so ``point.y`` arrives at
-    the backend in raw FITS array space. See
-    feedback_plotly_goimage_overlay memory for why ``go.Image`` is rejected.
+    the backend in raw FITS array space.
 
     Args:
         method: ``"percentile_asinh"`` (default) or ``"lupton"``.

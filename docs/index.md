@@ -22,6 +22,9 @@ jellyscope/
 ├── README.md                           # Quick start guide
 ├── LICENSE                             # MIT license
 ├── justfile                            # Development commands (see https://just.systems/)
+├── Dockerfile                          # Multi-stage build (uv builder → python:3.13-slim)
+├── docker-compose.yml                  # Service definition (named volume, port 5000)
+├── .dockerignore                       # Build-context excludes
 ├── data/                               # Astronomical data (FITS + CSV)
 │   ├── cut_datacube_nircam.fits        # NIRCam datacube (20 filters, 221x172 px)
 │   ├── cut_datacube_nircam_matched.fits# PSF-matched version
@@ -101,3 +104,17 @@ uv run jellyscope --data-dir data
 # Test
 uv run pytest
 ```
+
+## Run with Docker
+
+For a zero-toolchain run, Jellyscope ships with a `Dockerfile` and `docker-compose.yml`:
+
+```bash
+just docker-build       # docker compose build
+just docker-seed        # copy ./data into the jellyscope-data volume (one-time)
+just docker-up          # docker compose up -d
+```
+
+Open <http://localhost:5000>.
+
+The runtime image is multi-stage (uv builder → `python:3.13-slim`) and runs as a non-root user (UID 1000). Inside the container the app binds `0.0.0.0:5000`; the compose file maps it to `localhost:5000` on the host. The data directory is a Docker-managed named volume (`jellyscope-data`) mounted read-only at `/data`. Override CLI flags via `docker compose run --rm jellyscope --help`. Stop with `just docker-down`.
