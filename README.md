@@ -42,20 +42,21 @@ Place your data in the `data/` directory:
 
 ## Development
 
-This project uses modern Python tooling managed via [uv](https://docs.astral.sh/uv/) and a `Makefile`.
+This project uses modern Python tooling managed via [uv](https://docs.astral.sh/uv/) and a [`justfile`](https://just.systems/) (install with `brew install just` on macOS).
 
 ```bash
-make install       # Install deps + set up pre-commit hooks
-make lint          # Run ruff linter
-make lint-fix      # Auto-fix lint issues
-make format        # Format code with ruff
-make typecheck     # Run mypy type checking
-make test          # Run tests with coverage
-make test-fast     # Quick test run (no coverage, stop on first failure)
-make check         # Run ALL checks (lint + format + typecheck + tests)
-make spellcheck    # Check for typos in code/docs
-make serve         # Start the dev server
-make clean         # Remove build artifacts
+just               # List available recipes
+just install       # Install deps + set up pre-commit hooks
+just lint          # Run ruff linter
+just lint-fix      # Auto-fix lint issues
+just format        # Format code with ruff
+just typecheck     # Run mypy type checking
+just test          # Run tests with coverage
+just test-fast     # Quick test run (no coverage, stop on first failure)
+just check         # Run ALL checks (lint + format + typecheck + tests)
+just spellcheck    # Check for typos in code/docs
+just serve         # Start the dev server
+just clean         # Remove build artifacts
 ```
 
 ### Tooling
