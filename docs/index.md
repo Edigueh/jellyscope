@@ -21,7 +21,7 @@ jellyscope/
 ├── pyproject.toml                      # Package definition and dependencies
 ├── README.md                           # Quick start guide
 ├── LICENSE                             # MIT license
-├── Makefile                            # Development commands
+├── justfile                            # Development commands (see https://just.systems/)
 ├── data/                               # Astronomical data (FITS + CSV)
 │   ├── cut_datacube_nircam.fits        # NIRCam datacube (20 filters, 221x172 px)
 │   ├── cut_datacube_nircam_matched.fits# PSF-matched version
@@ -35,22 +35,29 @@ jellyscope/
 │   │
 │   ├── data/                           # Data loading layer
 │   │   ├── __init__.py
-│   │   ├── data_store.py              # DataStore singleton — in-memory data store
+│   │   ├── data_store.py              # DataStore singleton + Dataset (multi-dataset support)
 │   │   └── model/
 │   │       ├── datacube.py            # DataCube class — FITS I/O, slicing, spectra
 │   │       └── clumps.py             # ClumpCatalog — properties, masks, boundaries
 │   │
 │   ├── model/                          # Response models
-│   │   └── schemas.py                 # Pydantic schemas for API responses
+│   │   └── schemas.py                 # Pydantic schemas for API requests/responses
+│   │
+│   ├── spec_analysis/                  # Spectral analysis
+│   │   ├── __init__.py
+│   │   ├── spectral.py                # Pixel/clump/region spectrum extraction
+│   │   └── stats.py                   # Statistical helpers (currently unused)
 │   │
 │   ├── visualization/                  # Plotly figure builders
 │   │   ├── __init__.py
-│   │   ├── image_viewer.py            # Galaxy heatmap + clump overlays
+│   │   ├── image_viewer.py            # Galaxy heatmap + clump overlays + stretch funcs
+│   │   ├── rgb_composite.py           # RGB color composite (percentile_asinh / Lupton)
+│   │   ├── spectrum_plot.py           # SED figure builder (single + multi-overlay)
 │   │   └── properties_panel.py        # Clump property formatting
 │   │
 │   └── web/                            # FastAPI web application
 │       ├── __init__.py                 # App factory (create_app)
-│       ├── routes.py                   # 7 REST API endpoints
+│       ├── routes.py                   # 12 REST API endpoints (some SED-gated)
 │       ├── templates/index.html        # Single-page HTML template
 │       └── static/
 │           ├── app.js                  # Frontend controller (Plotly + fetch)
@@ -76,7 +83,7 @@ jellyscope/
 | [Architecture](architecture.md) | System layers, data flow, interaction diagrams, technical decisions |
 | [Data Layer](data-layer.md) | `config.py`, `data_store.py`, `model/datacube.py`, `model/clumps.py` — all classes and methods |
 | [Visualization](visualization.md) | `image_viewer.py`, `properties_panel.py` — Plotly figure builders |
-| [API Reference](api-reference.md) | All 7 REST endpoints with parameters, responses, and curl examples |
+| [API Reference](api-reference.md) | All 12 REST endpoints with parameters, responses, and curl examples |
 | [Frontend](frontend.md) | `index.html`, `app.js`, `style.css` — UI layout, JS controller, Plotly events |
 | [Extending](extending.md) | How to add new datasets, analysis modules, endpoints, and visualizations |
 

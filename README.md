@@ -21,11 +21,11 @@ uv sync --extra dev
 uv run jellyscope --data-dir data
 ```
 
-Then open http://127.0.0.1:5000 in your browser.
+Then open <http://127.0.0.1:5000> in your browser.
 
 ### Options
 
-```
+```plaintext
 --host HOST       Server host (default: 127.0.0.1)
 --port PORT       Server port (default: 5000)
 --data-dir DIR    Path to data directory (default: data)
@@ -62,7 +62,7 @@ just clean         # Remove build artifacts
 ### Tooling
 
 | Tool | Purpose |
-|------|---------|
+| ------ | --------- |
 | [uv](https://docs.astral.sh/uv/) | Package management, venv, lockfile |
 | [ruff](https://docs.astral.sh/ruff/) | Linting + formatting |
 | [mypy](https://mypy.readthedocs.io/) | Static type checking |
@@ -71,12 +71,13 @@ just clean         # Remove build artifacts
 
 ## Project Structure
 
-```
+```plaintext
 src/jellyscope/
 ├── config.py           # Configuration
 ├── data/               # FITS I/O, clump catalog, data store
-├── analysis/           # Spectral extraction, statistics
-├── visualization/      # Plotly figure builders
+├── model/              # Pydantic request/response schemas
+├── spec_analysis/      # Spectral extraction, statistics
+├── visualization/      # Plotly figure builders (image, RGB, SED)
 ├── web/                # FastAPI app, REST API, frontend
 └── cli.py              # Command-line entry point
 ```

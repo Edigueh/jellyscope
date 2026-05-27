@@ -14,28 +14,44 @@ Jellyscope follows a layered architecture where each layer only depends on layer
                        │ HTTP (JSON)
 ┌──────────────────────▼──────────────────────────┐
 │             Web Layer (FastAPI)                 │
-│  routes.py — 7 REST endpoints                   │
+│  routes.py — 12 REST endpoints (some SED-gated) │
 │  templates/index.html — SPA page                │
 │  static/app.js — frontend controller            │
 └──────────┬──────────────────────────────────────┘
            │
-┌──────────▼──────────┐
-│  Visualization      │
-│  image_viewer.py    │
-│  properties_panel.py│
-└──────────┬──────────┘
+┌──────────▼─────────────────────────────────────┐
+│  Visualization                                 │
+│  image_viewer.py — heatmap + clump overlays    │
+│  rgb_composite.py — RGB color composite        │
+│  spectrum_plot.py — SED figures                │
+│  properties_panel.py — clump property tables   │
+└──────────┬─────────────────────────────────────┘
            │
-┌──────────▼──────────────────────────────────────┐
-│                Data Layer                       │
-│  data_store.py    — DataStore singleton         │
-│  model/datacube.py — DataCube (FITS I/O)        │
-│  model/clumps.py  — ClumpCatalog (CSV + masks)  │
-│  config.py        — JellyscopeConfig            │
-└──────────────────────┬──────────────────────────┘
+┌──────────▼─────────────────────────────────────┐
+│  Spectral Analysis (spec_analysis/)            │
+│  spectral.py — pixel/clump/region extraction   │
+└──────────┬─────────────────────────────────────┘
+           │
+┌──────────▼─────────────────────────────────────┐
+│  API Contract (model/)                         │
+│  schemas.py — 15 Pydantic request/response     │
+│              models                            │
+└──────────┬─────────────────────────────────────┘
+           │
+┌──────────▼─────────────────────────────────────┐
+│                Data Layer                      │
+│  data_store.py    — DataStore + Dataset        │
+│                     (multi-dataset, singleton) │
+│  model/datacube.py — DataCube (FITS I/O)       │
+│  model/clumps.py  — ClumpCatalog (CSV + masks) │
+│  config.py        — JellyscopeConfig           │
+└──────────────────────┬─────────────────────────┘
                        │
 ┌──────────────────────▼──────────────────────────┐
 │              Data Files                         │
-│  *.fits (datacubes)   *.csv (clump catalogs)    │
+│  data_dir/<dataset>/*.fits  *.csv               │
+│  (subdirectories = datasets; flat layout = the  │
+│   single "default" dataset for backward compat) │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -56,7 +72,7 @@ This is the complete path that data travels from a FITS file on disk to a pixel 
    │  Singleton: loaded once at app startup, shared across requests
    │
 4. FastAPI request arrives
-   │  GET /api/viewer/nircam/7?selected=0,3
+   │  GET /api/datasets/{dataset_name}/viewer/nircam/7?selected=0,3
    │
 5. routes.get_viewer_figure()             [web/routes.py]
    │  Parses URL params → calls build_viewer_figure()
@@ -91,11 +107,11 @@ Browser                          Server
 plotly_click event
  → extract (x, y) from point
  │
- ├── GET /api/pixel/{x}/{y}/clump ─────→ ClumpCatalog.get_clump_id_at_pixel(x, y)
+ ├── GET /api/datasets/{dataset_name}/pixel/{x}/{y}/clump ─→ ClumpCatalog.get_clump_id_at_pixel(x, y)
  │                                        Uses _clump_map[y, x] → O(1) lookup
  ←── { "clump_id": 4 } ───────────────┘
  │
- ├── GET /api/clumps/4 ───────────────→ format_clump_properties(clump)
+ ├── GET /api/datasets/{dataset_name}/clumps/4 ───────────→ format_clump_properties(clump)
  │                                      get_boundary_coords(4)
  ←── { properties: {...}, boundary: [...] }
  │
@@ -113,7 +129,7 @@ slider input event
  → state.channel = newValue
  → update filter label text
  │
- └── GET /api/viewer/nircam/{ch} ─────→ build_viewer_figure(datacube, ch, clumps)
+ └── GET /api/datasets/{dataset_name}/viewer/nircam/{ch} ─→ build_viewer_figure(datacube, ch, clumps)
      ?selected=0,3                       Same pipeline: slice → stretch → heatmap
  ←── { figure: {...} } ──────────────┘
  │
@@ -139,7 +155,7 @@ def _log_stretch(data):
     return stretch(normalized)
 ```
 
-Alternative stretch functions `_asinh_stretch` (factor=18, 2nd–99.5th percentile) and `_power_stretch` (PowerStretch a=0.5) are also available.
+Alternative stretch functions `_lupton_asinh_stretch` (Lupton-style asinh with `softening=8.0`) and `_power_stretch` (PowerStretch `a=0.5`) are also available.
 
 ### 2. O(1) Pixel-to-Clump Lookup with `_clump_map`
 
@@ -213,6 +229,29 @@ def get(cls, config=None):
 
 **Trade-off**: Convex hulls don't capture concave clump shapes. For small clumps (5-144 pixels in current data), this is visually acceptable. For more complex shapes, this could be replaced with alpha-shapes or contour tracing.
 
+## Datasets
+
+Jellyscope supports multiple datasets in a single deployment. The `DataStore` discovers datasets by scanning subdirectories of `data_dir`:
+
+- **Subdirectory layout** — each subdirectory of `data_dir` containing FITS + CSV files becomes a `Dataset` named after the directory. Example: `data/galaxy_a/` and `data/galaxy_b/` produce datasets `galaxy_a` and `galaxy_b`.
+- **Flat layout (backward compat)** — when `data_dir` itself contains FITS/CSV files at the top level, those load as a single dataset named `default`.
+
+Each `Dataset` is a frozen dataclass with:
+
+- `name: str` — the dataset identifier used in URL paths.
+- `datacubes: dict[str, DataCube]` — keyed by datacube name (e.g., `nircam`, `nircam_matched`).
+- `clumps: ClumpCatalog` — the clump catalog scoped to that dataset.
+
+`DataStore` exposes `list_datasets()`, `get_dataset(name)`, `get_datacube(dataset_name, datacube_name)`, `get_clumps(dataset_name)`, and a `default_dataset` attribute. The first discovered dataset (alphabetically) is the default; the flat-layout `default` dataset is also the default when present.
+
+All API endpoints are namespaced under `/api/datasets/{dataset_name}/...` so multiple datasets can coexist without path collisions. `GET /api/datasets` returns the list and the default.
+
+## SED Gating
+
+Spectrum (SED) endpoints are gated behind a configuration flag. `JellyscopeConfig.enable_sed: bool = False` controls whether the four spectrum routes (`/clumps/{id}/spectrum/...`, `/pixel/{x}/{y}/spectrum/...`, `POST /region/spectrum/...`, `POST /compare/spectrum/...`) are reachable. When `enable_sed=False`, those routes return HTTP 404 via the `_require_sed_enabled()` guard in `routes.py`.
+
+The CLI does not currently expose a flag for this; flip it by constructing `JellyscopeConfig(enable_sed=True)` programmatically (e.g., in a custom entrypoint) or by editing the default in `config.py`.
+
 ## Module Dependency Graph
 
 ```plaintext
@@ -224,10 +263,17 @@ model/clumps.py (imports: pandas, numpy, scipy, pydantic)
     ↑
 data_store.py (imports: config, model/datacube, model/clumps)
     ↑
-    ├── image_viewer.py (imports: data_store/DataCube, model/clumps)
-    ├── properties_panel.py (imports: model/clumps)
+    ├── model/schemas.py (imports: pydantic — 15 request/response models)
+    ├── spec_analysis/spectral.py (imports: numpy, model/datacube, model/clumps)
+    ├── visualization/image_viewer.py (imports: data_store/DataCube, model/clumps)
+    ├── visualization/rgb_composite.py (imports: numpy, PIL, data_store/DataCube,
+    │                                            model/clumps, image_viewer helpers)
+    ├── visualization/spectrum_plot.py (imports: numpy, config wavelengths)
+    ├── visualization/properties_panel.py (imports: model/clumps)
     │       ↑
-    └── routes.py (imports: data_store, image_viewer, properties_panel, schemas)
+    └── web/routes.py (imports: data_store, model/schemas, spec_analysis/spectral,
+                                visualization/image_viewer, rgb_composite,
+                                spectrum_plot, properties_panel)
             ↑
         web/__init__.py (imports: config, data_store, routes)
             ↑

@@ -5,9 +5,12 @@ The data layer is the foundation of Jellyscope. It handles loading FITS datacube
 **Files covered**:
 
 - [config.py](../src/jellyscope/config.py) — Application configuration
-- [data/data_store.py](../src/jellyscope/data/data_store.py) — In-memory data store
+- [data/data_store.py](../src/jellyscope/data/data_store.py) — Multi-dataset in-memory data store
 - [data/model/datacube.py](../src/jellyscope/data/model/datacube.py) — FITS datacube I/O
 - [data/model/clumps.py](../src/jellyscope/data/model/clumps.py) — Clump catalog management
+- [model/schemas.py](../src/jellyscope/model/schemas.py) — Pydantic API request/response models
+- [spec_analysis/spectral.py](../src/jellyscope/spec_analysis/spectral.py) — Pixel/clump/region spectrum extraction
+- [spec_analysis/stats.py](../src/jellyscope/spec_analysis/stats.py) — Statistical helpers (currently unused)
 
 ---
 
@@ -57,6 +60,7 @@ class JellyscopeConfig(BaseModel):
     debug: bool                  # Debug mode (default: True)
     default_colorscale: str      # Plotly colorscale name (default: "Viridis")
     filter_wavelengths: dict[str, float]  # Filter → wavelength mapping (default: NIRCAM_WAVELENGTHS)
+    enable_sed: bool             # Gate spectrum endpoints (default: False — SED routes return 404)
 ```
 
 **Usage**:
@@ -318,52 +322,86 @@ Returns all clump properties as a list of JSON-serializable dicts.
 
 ---
 
-## data/data_store.py — DataStore
+## data/data_store.py — Dataset and DataStore
 
 **Location**: `src/jellyscope/data/data_store.py`
 
-The `DataStore` is a singleton that holds all loaded datacubes and the clump catalog in memory. It's initialized once at application startup and shared across all HTTP requests.
+The data store has two pieces: `Dataset` (a frozen dataclass holding the FITS datacubes and clump catalog for one galaxy) and `DataStore` (a singleton that manages multiple datasets and is shared across HTTP requests).
+
+### Dataclass: `Dataset`
+
+Holds everything loaded from one dataset directory.
+
+| Attribute | Type | Description |
+| ----------- | ------ | ------------- |
+| `name` | `str` | Dataset identifier (subdirectory name, or `"default"` for the flat layout) |
+| `datacubes` | `dict[str, DataCube]` | Datacubes keyed by name (e.g., `"nircam"`, `"nircam_matched"`) |
+| `clumps` | `ClumpCatalog \| None` | Clump catalog scoped to this dataset |
+
+#### `get_datacube(name: str) -> DataCube`
+
+Returns the named datacube. Raises `KeyError` listing available names if missing.
+
+#### `list_datacubes() -> list[str]`
+
+Returns names of loaded datacubes for this dataset.
 
 ### Class: `DataStore`
 
+Singleton that discovers and holds all `Dataset` instances under `config.data_dir`.
+
 #### `__init__(config: JellyscopeConfig)`
 
-Loads datacubes and clump catalog based on config paths.
+Discovers datasets and loads each one's FITS + CSV files into memory.
 
 ```python
 store = DataStore(JellyscopeConfig())
 ```
 
-**What happens**:
+**Discovery algorithm**:
 
-1. Loads `nircam` datacube from `config.data_dir / config.datacube_file`
-2. Loads `nircam_matched` datacube from `config.data_dir / config.datacube_matched_file`
-3. Creates `ClumpCatalog` using the `nircam` datacube's spatial shape as reference
+1. **Subdirectory layout** — every immediate subdirectory of `config.data_dir` containing the expected FITS + clump CSVs is loaded as a `Dataset` named after the directory. Subdirectories are processed in alphabetical order; the first one becomes `default_dataset`.
+2. **Flat layout (backward compat)** — when no subdirectories qualify but `config.data_dir` itself contains the expected files at the top level, those are loaded as a single dataset named `"default"`.
+3. **Empty / missing** — raises `FileNotFoundError` if `config.data_dir` does not exist or no valid datasets are found.
 
-Files that don't exist on disk are silently skipped (so you can run with only one datacube). However, the `nircam` datacube is required — a `FileNotFoundError` is raised if it's missing.
+For each dataset, `_try_load_dataset` requires both clump CSVs plus at least one of the two datacube files. The datacube `nircam` (else `nircam_matched`) provides the `spatial_shape` reference passed to `ClumpCatalog`. Missing optional datacube files are silently skipped.
 
-#### `get_datacube(name: str) -> DataCube`
+**Attributes after init**:
 
-Returns a loaded datacube by name.
+| Attribute | Type | Description |
+| ----------- | ------ | ------------- |
+| `config` | `JellyscopeConfig` | The config used to load |
+| `datasets` | `dict[str, Dataset]` | Dataset name → `Dataset` |
+| `default_dataset` | `str` | Name of the default dataset (first alphabetical, or `"default"` for flat layout) |
 
-```python
-dc = store.get_datacube("nircam")           # Original datacube
-dc_m = store.get_datacube("nircam_matched")  # PSF-matched version
-```
+#### `list_datasets() -> list[str]`
 
-**Raises**: `KeyError` with available names if `name` not found.
-
-#### `list_datacubes() -> list[str]`
-
-Returns names of all loaded datacubes.
+Returns names of all loaded datasets.
 
 ```python
-store.list_datacubes()  # ["nircam", "nircam_matched"]
+store.list_datasets()  # ["galaxy_a", "galaxy_b"]  or  ["default"]
 ```
 
-#### `get_datacubes() -> dict[str, DataCube]`
+#### `get_dataset(name: str) -> Dataset`
 
-Returns the full dict of name → DataCube mappings.
+Returns the named `Dataset`. Raises `KeyError` listing available names if missing.
+
+#### `get_datacube(dataset_name: str, datacube_name: str) -> DataCube`
+
+Scoped accessor — returns a single datacube within a dataset.
+
+```python
+dc = store.get_datacube("default", "nircam")
+dc_m = store.get_datacube("default", "nircam_matched")
+```
+
+#### `list_datacubes(dataset_name: str) -> list[str]`
+
+Returns datacube names for one dataset.
+
+#### `get_clumps(dataset_name: str) -> ClumpCatalog`
+
+Returns the clump catalog scoped to one dataset. Raises `KeyError` if the dataset has no catalog loaded.
 
 #### `get(config=None) -> DataStore` (classmethod)
 
@@ -381,3 +419,67 @@ Clears the singleton. Used in tests to force re-initialization with different co
 ```python
 DataStore.reset()  # Next get() will create a fresh instance
 ```
+
+---
+
+## model/schemas.py — API contract
+
+**Location**: `src/jellyscope/model/schemas.py`
+
+15 Pydantic models defining the request and response shapes for the REST API. Imported by `web/routes.py` to type request bodies and serialize responses.
+
+**Request models**:
+
+| Model | Used by | Purpose |
+| ------- | --------- | --------- |
+| `RectSelection` | `RegionRequest` | Rectangular region with `x0`, `y0`, `x1`, `y1` (pixel coords) |
+| `RegionRequest` | `POST /region/spectrum/...` | Either an explicit pixel list or a `RectSelection` |
+| `CompareRequest` | `POST /compare/spectrum/...` | List of `clump_ids` to overlay on one SED figure |
+
+**Response models**:
+
+| Model | Endpoint | Purpose |
+| ------- | ---------- | --------- |
+| `FilterInfo` | — | One filter's `index`, `name`, `wavelength` (used inside `FiltersResponse`) |
+| `ClumpListItem` | — | Compact clump summary for list views (used inside `ClumpsListResponse`) |
+| `DatasetsResponse` | `GET /api/datasets` | `{datasets: [...], default: "..."}` |
+| `DatacubesResponse` | `GET /datasets/.../datacubes` | List of available datacube names |
+| `FiltersResponse` | `GET /datasets/.../filters/{datacube}` | List of `FilterInfo` per channel |
+| `ViewerResponse` | `GET /datasets/.../viewer/{datacube}/{ch}` | Plotly figure dict + `filter_name` |
+| `RGBViewerResponse` | `GET /datasets/.../viewer/{datacube}/rgb` | Plotly figure dict + `r_filter`, `g_filter`, `b_filter` names |
+| `ClumpsListResponse` | `GET /datasets/.../clumps` | List of `ClumpListItem` |
+| `ClumpDetailResponse` | `GET /datasets/.../clumps/{id}` | `properties` dict + `boundary` polygon |
+| `PixelClumpResponse` | `GET /datasets/.../pixel/{x}/{y}/clump` | `clump_id` (int or `None`) |
+| `SpectrumResponse` | Pixel/clump/region SED endpoints | `spectrum` dict + Plotly `figure` |
+| `CompareResponse` | `POST /datasets/.../compare/spectrum/...` | Plotly `figure` + per-clump `spectra` list |
+
+---
+
+## spec_analysis/ — Spectral extraction
+
+**Location**: `src/jellyscope/spec_analysis/`
+
+Helper functions that convert a `DataCube` + selection (pixel, clump, or arbitrary mask) into a wavelength-vs-flux dict. Called from `web/routes.py` to serve the SED-gated spectrum endpoints.
+
+### `spectral.py`
+
+#### `extract_pixel_spectrum(datacube: DataCube, x: int, y: int) -> dict`
+
+Returns the SED at one pixel.
+
+```python
+spec = extract_pixel_spectrum(dc, 80, 100)
+# {"wavelengths": [...], "fluxes": [...], "filter_names": [...]}
+```
+
+#### `extract_clump_spectrum(datacube: DataCube, clumps: ClumpCatalog, clump_id: int) -> dict`
+
+Returns the mean SED across all pixels in a clump (also includes per-channel `std`).
+
+#### `extract_region_spectrum(datacube: DataCube, mask: np.ndarray) -> dict`
+
+Returns the mean SED across all `True` pixels in a boolean mask. Used for `POST /region/spectrum/...`.
+
+### `stats.py`
+
+Module exists but is currently unused by the rest of the codebase. Reserved for future statistical helpers.

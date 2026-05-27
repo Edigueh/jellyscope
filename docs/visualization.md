@@ -32,18 +32,6 @@ Applies log stretch using astropy's `LogStretch(a=200)` after normalizing to the
 3. Clip and normalize to [0, 1]
 4. Apply `log(200*x + 1) / log(201)`
 
-#### `_asinh_stretch(data: np.ndarray) -> np.ndarray`
-
-Applies arcsinh intensity stretch. Standard in optical/IR astronomy (SDSS, STScI).
-
-**Algorithm**:
-
-1. Clip to [2nd, 99.5th] percentile (removes outlier hot/cold pixels)
-2. Normalize to [0, 1]
-3. Apply `arcsinh(x * 18) / arcsinh(18)`
-
-The factor of 18 controls the stretch intensity — higher values bring out more faint structure.
-
 #### `_lupton_asinh_stretch(data: np.ndarray, softening=8.0, alpha=None) -> np.ndarray`
 
 Lupton et al. (2004) single-band asinh stretch: `f(x) = arcsinh(alpha*Q*(x-m)) / Q`. Linear for faint features, logarithmic for bright features. Background level `m` and noise `sigma` are estimated via sigma-clipped statistics. If `alpha` is not provided, it is auto-computed from the noise level as `0.02 / sigma`.
@@ -297,13 +285,14 @@ Assembles the Plotly figure with RGB image + clump overlays.
 | `softening` | `float` | Lupton Q — only used when `method="lupton"` |
 | `alpha` | `float \| None` | Lupton linear stretch factor — only used when `method="lupton"` |
 
-**Coordinate system note**: Plotly's `go.Image` renders array row 0 at the top (y-axis increases downward), while heatmaps render row 0 at the bottom. To match single-band visual orientation:
+**Coordinate system note**: The RGB image is rendered as a PNG embedded in `layout.images[]` rather than as a `go.Image` trace. The figure pipeline:
 
-1. The image is flipped vertically (`np.flipud`)
-2. Boundary/centroid y-coordinates are transformed: `y_new = ny - 1 - y`
-3. The y-axis uses `autorange: "reversed"` to keep y=0 at the bottom
+1. Encode the `(ny, nx, 3)` uint8 array as a base64 PNG via `PIL.Image.fromarray(np.flipud(rgb)).save(buf, format="PNG")`. The `np.flipud` is the only coordinate transform — it compensates for PNG's top-down row order so the image displays with row 0 at the bottom (matching heatmap convention).
+2. Place the PNG via `layout.images = [{source: "data:image/png;base64,...", x: 0, y: 0, sizex: nx, sizey: ny, xanchor: "left", yanchor: "bottom", layer: "below", sizing: "stretch"}]`.
+3. Add an invisible `go.Heatmap` trace (`opacity: 0`, identical extent) to carry click/hover events. Plotly's `plotly_click` returns `point.x`/`point.y` in raw FITS array space directly from this trace.
+4. Boundary and centroid scatter traces use raw FITS pixel coordinates — **no `ny-1-y` transform** at the trace level, and **no `autorange: "reversed"`** on the y-axis.
 
-All three are required for correct alignment between the RGB image and scatter overlays.
+This replaces the prior `go.Image` approach, which forced `autorange: "reversed"` and required mirrored y-coordinates on every overlay trace. The current scheme keeps overlay code identical between single-band and RGB views.
 
 ---
 
@@ -330,6 +319,6 @@ Creates a single SED plot with flux vs wavelength. If the spectrum dict contains
 
 ### `create_multi_sed_figure(spectra, labels) -> dict`
 
-Overlays multiple SEDs on one plot for comparison. Each SED gets a distinct color from an 8-color palette. Used by the `/api/compare/spectrum/` endpoint.
+Overlays multiple SEDs on one plot for comparison. Each SED gets a distinct color from an 8-color palette. Used by the `/api/datasets/{dataset_name}/compare/spectrum/{datacube_name}` endpoint.
 
 ---

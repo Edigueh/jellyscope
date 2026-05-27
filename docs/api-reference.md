@@ -4,6 +4,8 @@ Jellyscope exposes a REST API over HTTP. All data endpoints return JSON. The API
 
 **Base URL**: `http://127.0.0.1:5000` (default)
 
+All data endpoints are scoped under `/api/datasets/{dataset_name}/`. Use `GET /api/datasets` to list available datasets and the default.
+
 ---
 
 ## Pages
@@ -16,18 +18,41 @@ Serves the main single-page application HTML.
 curl http://localhost:5000/
 ```
 
-Returns the rendered `index.html` template with Jinja2 variables populated (datacube list, filter names).
+Returns the rendered `index.html` template with Jinja2 variables populated (datasets, filters, wavelengths, etc.).
+
+---
+
+## Datasets
+
+### `GET /api/datasets`
+
+List all available datasets and the default dataset name.
+
+```bash
+curl http://localhost:5000/api/datasets
+```
+
+**Response**:
+
+```json
+{
+    "datasets": ["galaxy_a", "galaxy_b"],
+    "default": "galaxy_a"
+}
+```
+
+For a flat layout (files directly in `data/`), `datasets` will be `["default"]`.
 
 ---
 
 ## Datacube Information
 
-### `GET /api/datacubes`
+### `GET /api/datasets/{dataset_name}/datacubes`
 
-List all available datacubes.
+List all available datacubes within a dataset.
 
 ```bash
-curl http://localhost:5000/api/datacubes
+curl http://localhost:5000/api/datasets/default/datacubes
 ```
 
 **Response**:
@@ -40,18 +65,19 @@ curl http://localhost:5000/api/datacubes
 
 ---
 
-### `GET /api/filters/{datacube_name}`
+### `GET /api/datasets/{dataset_name}/filters/{datacube_name}`
 
 List all filter channels for a datacube, with their wavelengths.
 
 ```bash
-curl http://localhost:5000/api/filters/nircam
+curl http://localhost:5000/api/datasets/default/filters/nircam
 ```
 
 **Path parameters**:
 
 | Param | Type | Description |
 | ------- | ------ | ------------- |
+| `dataset_name` | `string` | Dataset name (from `/api/datasets`) |
 | `datacube_name` | `string` | Datacube name (`"nircam"` or `"nircam_matched"`) |
 
 **Response**:
@@ -71,19 +97,20 @@ curl http://localhost:5000/api/filters/nircam
 
 ## Image Viewer
 
-### `GET /api/viewer/{datacube_name}/{channel_index}`
+### `GET /api/datasets/{dataset_name}/viewer/{datacube_name}/{channel_index}`
 
 Returns a complete Plotly figure (heatmap + clump overlays + centroids) ready for `Plotly.react()`.
 
 ```bash
 # F200W (channel 7), with clumps 0 and 4 selected
-curl "http://localhost:5000/api/viewer/nircam/7?selected=0,4&colorscale=Viridis&stretch=log"
+curl "http://localhost:5000/api/datasets/default/viewer/nircam/7?selected=0,4&colorscale=Viridis&stretch=log"
 ```
 
 **Path parameters**:
 
 | Param | Type | Description |
 | ------- | ------ | ------------- |
+| `dataset_name` | `string` | Dataset name |
 | `datacube_name` | `string` | Datacube name |
 | `channel_index` | `int` | Filter channel index (0-19) |
 
@@ -124,19 +151,21 @@ curl "http://localhost:5000/api/viewer/nircam/7?selected=0,4&colorscale=Viridis&
 
 ---
 
-### `GET /api/viewer/{datacube_name}/rgb`
+### `GET /api/datasets/{dataset_name}/viewer/{datacube_name}/rgb`
 
 Returns an RGB composite Plotly figure with clump overlays. Two stretch methods are available, selectable via the `method` query parameter:
 
 - **`percentile_asinh`** (default) — per-band median subtract, percentile clip, asinh stretch, and pedestal cut. Recipe contributed by Andressa; produces clean, deep-field-style images.
 - **`lupton`** — Lupton et al. (2004) Eq. 2 color-preserving mapping. Output color depends only on flux ratios, not brightness. The `softening` (Q) parameter applies only to this method.
 
+The RGB image is rendered as a PNG embedded in `layout.images[]` (not as a `go.Image` trace). An invisible `heatmap` trace with `opacity: 0` over the same extent carries click/hover events so `plotly_click` returns coordinates in raw FITS pixel space. Boundary and centroid traces use raw FITS pixel coordinates — **no `ny-1-y` transform** needed at the trace level.
+
 ```bash
-# Default method (percentile_asinh) with R=F200W, G=F115W, B=F090W
-curl "http://localhost:5000/api/viewer/nircam/rgb?r=7&g=2&b=1&method=percentile_asinh"
+# Default method (percentile_asinh) with R=F200W (ch 7), G=F115W (ch 2), B=F090W (ch 1)
+curl "http://localhost:5000/api/datasets/default/viewer/nircam/rgb?r=7&g=2&b=1&method=percentile_asinh"
 
 # Lupton method with custom softening
-curl "http://localhost:5000/api/viewer/nircam/rgb?r=19&g=10&b=0&method=lupton&softening=8.0"
+curl "http://localhost:5000/api/datasets/default/viewer/nircam/rgb?r=19&g=10&b=0&method=lupton&softening=8.0"
 ```
 
 **Query parameters**:
@@ -161,35 +190,40 @@ curl "http://localhost:5000/api/viewer/nircam/rgb?r=19&g=10&b=0&method=lupton&so
 {
     "figure": {
         "data": [
-            {"type": "image", "z": [[[r,g,b], ...]], ...},
-            {"type": "scatter", ...},
+            {"type": "heatmap", "z": null, "opacity": 0, ...},
+            {"type": "scatter", "name": "Clump 0", ...},
             ...
         ],
-        "layout": {...}
+        "layout": {
+            "images": [{"source": "data:image/png;base64,...", ...}],
+            ...
+        }
     },
-    "r_filter": "F480M",
-    "g_filter": "F277W",
-    "b_filter": "F070W"
+    "r_filter": "F200W",
+    "g_filter": "F115W",
+    "b_filter": "F090W"
 }
 ```
+
+Note: `data[0]` is the invisible heatmap click target, not the image. The PNG lives in `layout.images[0].source`.
 
 ---
 
 ## Clumps
 
-### `GET /api/clumps`
+### `GET /api/datasets/{dataset_name}/clumps`
 
 List all detected clumps with basic properties.
 
 ```bash
 # All clumps
-curl http://localhost:5000/api/clumps
+curl http://localhost:5000/api/datasets/default/clumps
 
 # Only disk clumps
-curl "http://localhost:5000/api/clumps?component=disk"
+curl "http://localhost:5000/api/datasets/default/clumps?component=disk"
 
 # Only clumps outside the disk
-curl "http://localhost:5000/api/clumps?component=outside&inside=false"
+curl "http://localhost:5000/api/datasets/default/clumps?component=outside&inside=false"
 ```
 
 **Query parameters**:
@@ -219,12 +253,12 @@ curl "http://localhost:5000/api/clumps?component=outside&inside=false"
 
 ---
 
-### `GET /api/clumps/{clump_id}`
+### `GET /api/datasets/{dataset_name}/clumps/{clump_id}`
 
 Get detailed properties and boundary polygon for a single clump.
 
 ```bash
-curl http://localhost:5000/api/clumps/4
+curl http://localhost:5000/api/datasets/default/clumps/4
 ```
 
 **Response**:
@@ -256,12 +290,12 @@ curl http://localhost:5000/api/clumps/4
 
 ## Pixel Interaction
 
-### `GET /api/pixel/{x}/{y}/clump`
+### `GET /api/datasets/{dataset_name}/pixel/{x}/{y}/clump`
 
 Identify which clump (if any) a pixel belongs to. O(1) lookup.
 
 ```bash
-curl http://localhost:5000/api/pixel/72/20/clump
+curl http://localhost:5000/api/datasets/default/pixel/72/20/clump
 ```
 
 **Response** (pixel belongs to clump 0):
@@ -280,25 +314,25 @@ curl http://localhost:5000/api/pixel/72/20/clump
 
 ## JavaScript `fetch()` Examples
 
-These examples show how the frontend calls the API (from [app.js](../src/jellyscope/web/static/app.js)):
+These examples show how the frontend calls the API (from [app.js](../src/jellyscope/web/static/app.js)). `DATASET` is the active dataset name (injected from the template as `DEFAULT_DATASET`):
 
 ```javascript
 // Get viewer figure (single-band)
-const resp = await fetch(`/api/viewer/nircam/7?selected=0,4&colorscale=Viridis&stretch=log`);
+const resp = await fetch(`/api/datasets/${DATASET}/viewer/nircam/7?selected=0,4&colorscale=Viridis&stretch=log`);
 const data = await resp.json();
 Plotly.react("galaxy-viewer", data.figure.data, data.figure.layout);
 
 // Get RGB composite (default percentile_asinh method)
-const resp = await fetch(`/api/viewer/nircam/rgb?r=7&g=2&b=1&method=percentile_asinh`);
+const resp = await fetch(`/api/datasets/${DATASET}/viewer/nircam/rgb?r=7&g=2&b=1&method=percentile_asinh`);
 const data = await resp.json();
 Plotly.react("galaxy-viewer", data.figure.data, data.figure.layout);
 
 // Check clump at pixel
-const resp = await fetch(`/api/pixel/72/20/clump`);
+const resp = await fetch(`/api/datasets/${DATASET}/pixel/72/20/clump`);
 const { clump_id } = await resp.json();
 
 // Get clump details
-const resp = await fetch(`/api/clumps/4`);
+const resp = await fetch(`/api/datasets/${DATASET}/clumps/4`);
 const { properties, boundary } = await resp.json();
 ```
 
@@ -306,12 +340,14 @@ const { properties, boundary } = await resp.json();
 
 ## Spectral Extraction
 
-### `GET /api/clumps/{clump_id}/spectrum/{datacube_name}`
+> **SED-gated**: these four endpoints return `404` when `JellyscopeConfig.enable_sed = False` (the default). Set `enable_sed=True` in config to enable them.
+
+### `GET /api/datasets/{dataset_name}/clumps/{clump_id}/spectrum/{datacube_name}`
 
 Mean SED for a clump (flux averaged over all pixels in the clump mask).
 
 ```bash
-curl http://localhost:5000/api/clumps/0/spectrum/nircam
+curl http://localhost:5000/api/datasets/default/clumps/0/spectrum/nircam
 ```
 
 **Response**:
@@ -332,12 +368,12 @@ curl http://localhost:5000/api/clumps/0/spectrum/nircam
 
 ---
 
-### `GET /api/pixel/{x}/{y}/spectrum/{datacube_name}`
+### `GET /api/datasets/{dataset_name}/pixel/{x}/{y}/spectrum/{datacube_name}`
 
 SED for a single pixel.
 
 ```bash
-curl http://localhost:5000/api/pixel/80/100/spectrum/nircam
+curl http://localhost:5000/api/datasets/default/pixel/80/100/spectrum/nircam
 ```
 
 **Response**:
@@ -356,12 +392,12 @@ curl http://localhost:5000/api/pixel/80/100/spectrum/nircam
 
 ---
 
-### `POST /api/region/spectrum/{datacube_name}`
+### `POST /api/datasets/{dataset_name}/region/spectrum/{datacube_name}`
 
 Mean SED for an arbitrary region (rectangle or pixel list).
 
 ```bash
-curl -X POST http://localhost:5000/api/region/spectrum/nircam \
+curl -X POST http://localhost:5000/api/datasets/default/region/spectrum/nircam \
   -H "Content-Type: application/json" \
   -d '{"rect": {"x0": 70, "y0": 15, "x1": 80, "y1": 25}}'
 ```
@@ -382,12 +418,12 @@ or:
 
 ---
 
-### `POST /api/compare/spectrum/{datacube_name}`
+### `POST /api/datasets/{dataset_name}/compare/spectrum/{datacube_name}`
 
 Overlay multiple clump SEDs for comparison.
 
 ```bash
-curl -X POST http://localhost:5000/api/compare/spectrum/nircam \
+curl -X POST http://localhost:5000/api/datasets/default/compare/spectrum/nircam \
   -H "Content-Type: application/json" \
   -d '{"clump_ids": [0, 1, 3]}'
 ```

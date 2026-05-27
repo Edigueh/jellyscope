@@ -14,11 +14,17 @@ The Jellyscope frontend is a single-page application built with vanilla HTML, CS
 
 **Location**: `src/jellyscope/web/templates/index.html`
 
-This is a Jinja2 template rendered by FastAPI (via `Jinja2Templates`). It receives three variables from the server:
+This is a Jinja2 template rendered by FastAPI (via `Jinja2Templates`). It receives the following variables from the server:
 
-- `datacubes`: list of available datacube names (e.g., `["nircam", "nircam_matched"]`)
-- `filters`: list of filter names (e.g., `["F070W", "F090W", ...]`)
+- `datasets`: list of available dataset names (e.g., `["galaxy_a", "galaxy_b"]` or `["default"]` for a flat layout)
+- `default_dataset`: name of the default dataset (active at page load)
+- `default_datacube`: name of the datacube to display first (first available datacube of the default dataset)
+- `datacubes`: list of available datacube names for the default dataset (e.g., `["nircam", "nircam_matched"]`)
+- `filters`: list of filter names for the default datacube (e.g., `["F070W", "F090W", ...]`)
 - `wavelengths`: dict mapping filter names to central wavelengths in µm
+- `enable_sed`: bool — controls whether SED panels/buttons render (mirrors `JellyscopeConfig.enable_sed`)
+
+These are exposed to JavaScript as `DATASETS`, `DEFAULT_DATASET`, `DEFAULT_DATACUBE`, `FILTERS`, `WAVELENGTHS`, and `FEATURES.sed` constants.
 
 ### Layout
 
@@ -80,10 +86,18 @@ Right column: `360px` fixed — the panels stack vertically.
 
 <!-- Filter names and wavelengths passed to JavaScript -->
 <script>
+    const DATASETS = {{ datasets | tojson }};
+    // → ["galaxy_a", "galaxy_b"] (or ["default"] for a flat data dir)
+    const DEFAULT_DATASET = {{ default_dataset | tojson }};
+    // → "galaxy_a"
+    const DEFAULT_DATACUBE = {{ default_datacube | tojson }};
+    // → "nircam"
     const FILTERS = {{ filters | tojson }};
     // → ["F070W", "F090W", ..., "F480M"]
     const WAVELENGTHS = {{ wavelengths | tojson }};
     // → {"F070W": 0.704, "F090W": 0.901, ...}
+    const FEATURES = {sed: {{ enable_sed | tojson }}};
+    // → {sed: false} when JellyscopeConfig.enable_sed = False
 </script>
 ```
 
@@ -101,7 +115,8 @@ All UI state is tracked in a single global object:
 const DEFAULT_RGB_FILTERS = {r: "F200W", g: "F115W", b: "F090W"};
 
 const state = {
-    datacube: "nircam",           // Currently selected datacube
+    dataset: DEFAULT_DATASET,     // Active dataset (from template)
+    datacube: DEFAULT_DATACUBE,   // Currently selected datacube
     channel: 7,                   // Current filter channel (default: F200W)
     selectedClumps: new Set(),    // Set of selected clump IDs
     colorscale: "Viridis",        // Current colorscale
@@ -126,10 +141,10 @@ The RGB defaults come from `DEFAULT_RGB_FILTERS` (mirrors `DEFAULT_RGB` in `src/
 DOMContentLoaded
     └── init()
         ├── populateRGBSelects()  → fill R/G/B dropdowns; calls updateRGBFilterOptions() at end
-        ├── loadClumpList()       → GET /api/clumps → populate clump list
+        ├── loadClumpList()       → GET /api/datasets/{state.dataset}/clumps → populate clump list
         ├── updateFilterLabel()   → set initial status label
         ├── updateRGBMethodUI()   → show/hide Q slider based on state.rgbMethod
-        ├── renderViewer()        → GET /api/viewer/... → render Plotly figure
+        ├── renderViewer()        → GET /api/datasets/{state.dataset}/viewer/... → render Plotly figure
         └── setupEventListeners()
             ├── datacube-select    → onChange → renderViewer()
             ├── filter-slider      → onInput → updateFilterLabel() + renderViewer()
@@ -143,6 +158,8 @@ DOMContentLoaded
             ├── btn-centroids      → onClick → toggle + renderViewer()
             └── clump-filter       → onChange → loadClumpList()
 ```
+
+All API URLs are namespaced under `/api/datasets/${state.dataset}/`. The active dataset is read from the template-injected `DEFAULT_DATASET` constant at startup. SED-related fetches (clump/pixel/region/compare spectrum) are gated by `FEATURES.sed` — when `enable_sed=False`, the spectrum endpoints return 404 and the corresponding panels are not populated.
 
 ### Function Reference
 
@@ -197,9 +214,9 @@ The core render function. Fetches the Plotly figure from the API and renders it:
 
 ```plaintext
 1. If viewMode == "rgb":
-     Build URL: /api/viewer/{datacube}/rgb?r={R}&g={G}&b={B}&selected={ids}&method={rgbMethod}&softening={Q}
+     Build URL: /api/datasets/{dataset}/viewer/{datacube}/rgb?r={R}&g={G}&b={B}&selected={ids}&method={rgbMethod}&softening={Q}
    Else:
-     Build URL: /api/viewer/{datacube}/{channel}?selected={ids}&colorscale={scale}&stretch={stretch}
+     Build URL: /api/datasets/{dataset}/viewer/{datacube}/{channel}?selected={ids}&colorscale={scale}&stretch={stretch}
 2. fetch(url) → JSON response with figure dict
 3. Set figure.layout.dragmode = state.dragmode
 4. If !showCentroids → remove last trace (centroids) from data
@@ -214,9 +231,9 @@ Called whenever: datacube changes, filter changes, colorscale changes, stretch c
 Handles clicks on the galaxy image:
 
 1. Extract `(x, y)` pixel coordinates from the clicked point
-2. `GET /api/pixel/{x}/{y}/clump` — check if pixel belongs to a clump
+2. `GET /api/datasets/{state.dataset}/pixel/{x}/{y}/clump` — check if pixel belongs to a clump
 3. If clump found → `toggleClumpSelection(clumpId)`
-4. If no clump → `showPixelSpectrum(x, y)`
+4. If no clump and `FEATURES.sed` → `showPixelSpectrum(x, y)`
 
 #### `onViewerSelected(eventData)`
 
@@ -224,7 +241,7 @@ Handles Plotly lasso/rectangle selection events:
 
 1. Extract pixel coordinates from all selected points
 2. Filter to only heatmap points (`curveNumber === 0`)
-3. `POST /api/region/spectrum/{datacube}` with pixel list
+3. `POST /api/datasets/{state.dataset}/region/spectrum/{datacube}` with pixel list (skipped when `FEATURES.sed` is false)
 4. Render the returned SED figure in the spectrum panel
 
 #### `toggleClumpSelection(clumpId)`
@@ -243,12 +260,12 @@ Fetches properties and spectrum for a single clump in parallel:
 
 ```javascript
 const [propsResp, specResp] = await Promise.all([
-    fetch(`/api/clumps/${clumpId}`),
-    fetch(`/api/clumps/${clumpId}/spectrum/${state.datacube}`),
+    fetch(`/api/datasets/${state.dataset}/clumps/${clumpId}`),
+    fetch(`/api/datasets/${state.dataset}/clumps/${clumpId}/spectrum/${state.datacube}`),
 ]);
 ```
 
-Updates both the properties panel (HTML table) and spectrum plot (Plotly figure).
+Updates both the properties panel (HTML table) and spectrum plot (Plotly figure). When `FEATURES.sed` is false the spectrum fetch is skipped (the endpoint would return 404).
 
 #### `showMultiClumpComparison(clumpIds)`
 

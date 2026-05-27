@@ -6,19 +6,22 @@ This guide explains how to add new data, features, and modules to Jellyscope.
 
 ## 1. Adding a New Dataset
 
-A dataset is a collection of FITS datacubes and CSV clump catalogs for one galaxy observation.
+A dataset is a collection of FITS datacubes and CSV clump catalogs for one galaxy observation. Each dataset is a subdirectory of `data/` (the directory name becomes the dataset's API identifier). A flat `data/` (files directly under it) is loaded as a single dataset called `default`.
 
 ### Step 1: Prepare the data files
 
-Place your files in the `data/` directory (or a subdirectory):
+Place your files in a subdirectory of `data/`:
 
 ```plaintext
 data/
-├── my_new_galaxy.fits              # 3D FITS: (n_filters, ny, nx), float64
-├── my_new_galaxy_matched.fits      # Optional: PSF-matched version
-├── clumps_properties.csv           # Clump properties (same column names)
-└── clumps_pixels.csv               # Clump pixel coordinates
+└── my_new_galaxy/                      # Becomes dataset name "my_new_galaxy"
+    ├── datacube.fits                   # 3D FITS: (n_filters, ny, nx), float64
+    ├── datacube_matched.fits           # Optional: PSF-matched version
+    ├── clumps_properties.csv           # Clump properties (same column names)
+    └── clumps_pixels.csv               # Clump pixel coordinates
 ```
+
+`DataStore` discovers all subdirectories at startup; the first (alphabetical) becomes the `default_dataset`. Add more subdirectories to expose more datasets — no code changes required.
 
 **FITS requirements**:
 
@@ -72,10 +75,10 @@ Or add them to `NIRCAM_WAVELENGTHS` in `config.py`.
 
 ### Step 1: Create the module
 
-Create a new file in `src/jellyscope/analysis/`:
+Create a new file in `src/jellyscope/spec_analysis/`:
 
 ```python
-# src/jellyscope/analysis/color_magnitude.py
+# src/jellyscope/spec_analysis/color_magnitude.py
 """Color-magnitude diagram analysis."""
 
 import numpy as np
@@ -148,23 +151,25 @@ def create_cmd_figure(data: list[dict]) -> dict:
 
 ### Step 3: Add a REST endpoint
 
-In `routes.py`, add:
+In `routes.py`, add (note the `/api/datasets/{dataset_name}/` namespace and the `_dataset(name)` helper):
 
 ```python
-@router.get("/api/cmd/{datacube_name}")
-def get_color_magnitude(datacube_name: str):
-    store = _store()
-    dc = store.get_datacube(datacube_name)
+@router.get("/api/datasets/{dataset_name}/cmd/{datacube_name}")
+def get_color_magnitude(dataset_name: str, datacube_name: str):
+    dataset = _dataset(dataset_name)          # Resolve dataset by name (404 if missing)
+    dc = dataset.get_datacube(datacube_name)  # Get the datacube on that dataset
 
-    from jellyscope.analysis.color_magnitude import compute_clump_colors
+    from jellyscope.spec_analysis.color_magnitude import compute_clump_colors
     from jellyscope.visualization.color_magnitude_plot import create_cmd_figure
 
     blue = "F150W"
     red = "F444W"
-    data = compute_clump_colors(dc, store.clumps, blue, red)
+    data = compute_clump_colors(dc, dataset.clumps, blue, red)
     figure = create_cmd_figure(data)
     return {"data": data, "figure": figure}
 ```
+
+If the response shape is non-trivial, define a Pydantic model in `src/jellyscope/model/schemas.py` and return it instead of a bare dict — that file is the single source of truth for the API contract.
 
 ### Step 4: Add to the frontend (optional)
 
@@ -172,7 +177,7 @@ In `index.html`, add a new panel or button. In `app.js`, add a fetch call:
 
 ```javascript
 async function showCMD() {
-    const resp = await fetch(`/api/cmd/${state.datacube}?blue=F150W&red=F444W`);
+    const resp = await fetch(`/api/datasets/${state.dataset}/cmd/${state.datacube}?blue=F150W&red=F444W`);
     const data = await resp.json();
     Plotly.react("cmd-plot", data.figure.data, data.figure.layout);
 }
@@ -182,24 +187,26 @@ async function showCMD() {
 
 ## 3. Adding a New REST Endpoint
 
-All endpoints are in [routes.py](../src/jellyscope/web/routes.py). Follow this pattern:
+All endpoints are in [routes.py](../src/jellyscope/web/routes.py). Every data endpoint is namespaced under `/api/datasets/{dataset_name}/...` so the dataset is explicit in the URL. Follow this pattern:
 
 ```python
-@router.get("/api/your-endpoint/{datacube_name}")
-def your_endpoint(datacube_name: str):
-    store = _store()                          # Get the DataStore singleton
-    dc = store.get_datacube(datacube_name)    # Get the datacube
+@router.get("/api/datasets/{dataset_name}/your-endpoint/{datacube_name}")
+def your_endpoint(dataset_name: str, datacube_name: str):
+    dataset = _dataset(dataset_name)          # Helper: resolves dataset or 404s
+    dc = dataset.get_datacube(datacube_name)  # Get the datacube
     # ... compute something ...
-    return {"result": ...}                    # Return dict (auto-serialized to JSON)
+    return {"result": ...}                    # Return dict or Pydantic model
 ```
+
+For SED-like routes that should be opt-in, add `_require_sed_enabled(request)` at the top of the handler — it 404s when `JellyscopeConfig.enable_sed = False`.
 
 **Conventions**:
 
-- Prefix all API routes with `/api/`
-- Use path parameters for required IDs: `/api/clumps/{clump_id}`
+- Prefix all data routes with `/api/datasets/{dataset_name}/`
+- Use path parameters for required IDs: `/api/datasets/{dataset_name}/clumps/{clump_id}`
 - Use query parameters for optional filters: `?component=disk`
 - POST for requests with complex bodies (pixel lists, clump ID arrays)
-- Return dicts or Pydantic response models (FastAPI handles JSON serialization)
+- Define request/response Pydantic models in `src/jellyscope/model/schemas.py` and reference them via `response_model=...` (FastAPI handles JSON serialization)
 
 ---
 
@@ -278,9 +285,9 @@ Update the version in two places:
 
 ---
 
-## 6. Supporting Multiple Galaxies
+## 6. Multiple Galaxies (already supported)
 
-To evolve Jellyscope to handle multiple galaxies, you could organize data as subdirectories:
+`DataStore` already discovers multiple galaxies as subdirectories of `config.data_dir`. Drop your data in:
 
 ```plaintext
 data/
@@ -293,24 +300,21 @@ data/
 │   └── ...
 ```
 
-Then extend `DataStore` to lazily load datasets:
+Each subdirectory is loaded as a `Dataset` named after the directory. The first (alphabetical) becomes `default_dataset`. A flat layout (files directly under `data/`) is loaded as a single dataset called `default` for backward compatibility.
+
+The frontend exposes the active dataset via `DEFAULT_DATASET` (template-injected) and `state.dataset` (JS), so all `/api/datasets/${state.dataset}/...` calls automatically scope to it. To let the user switch galaxies, add a `<select>` populated from `DATASETS` and update `state.dataset` on change before re-rendering.
+
+---
+
+## 7. Enabling SED Endpoints
+
+The four spectrum endpoints (`clumps/{id}/spectrum`, `pixel/{x}/{y}/spectrum`, `region/spectrum`, `compare/spectrum`) are gated by `JellyscopeConfig.enable_sed` and return 404 by default. To enable them:
 
 ```python
-class DataStore:
-    def __init__(self, config):
-        self._datasets: dict[str, dict] = {}
-        # Scan data_dir for subdirectories
-        for subdir in config.data_dir.iterdir():
-            if subdir.is_dir() and (subdir / "datacube.fits").exists():
-                self._datasets[subdir.name] = {"path": subdir, "loaded": False}
-
-    def get_dataset(self, name: str):
-        ds = self._datasets[name]
-        if not ds["loaded"]:
-            ds["datacube"] = DataCube(ds["path"] / "datacube.fits")
-            ds["clumps"] = ClumpCatalog(...)
-            ds["loaded"] = True
-        return ds
+config = JellyscopeConfig(
+    data_dir=Path("data"),
+    enable_sed=True,
+)
 ```
 
-This keeps memory usage proportional to the number of actively viewed galaxies, not the total collection.
+The CLI does not yet expose a `--enable-sed` flag — set it on the config object in code, or wire one up in `cli.py` as a small extension.
