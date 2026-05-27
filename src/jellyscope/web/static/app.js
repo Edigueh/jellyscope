@@ -13,9 +13,63 @@ function debounce(fn, ms) {
 
 const DEFAULT_RGB_FILTERS = {r: "F200W", g: "F115W", b: "F090W"};
 
-function defaultRgbIndex(filterName, fallback) {
-    const idx = currentFilters.indexOf(filterName);
-    return idx >= 0 ? idx : fallback;
+// Fallback wavelength offsets (µm) used when a default filter lacks a
+// WAVELENGTHS entry on first load. Values match F200W−F115W and F115W−F090W.
+const RGB_DELTA_RG_FALLBACK = 0.836;
+const RGB_DELTA_GB_FALLBACK = 0.253;
+
+// Resolve {r, g, b} indices into filterList. Prefers the named DEFAULT_RGB_FILTERS
+// when both filterList and WAVELENGTHS know them. For any unresolved slot, picks
+// by λ-rank against the sublist of indices with a known wavelength: R = argmax(λ),
+// B = argmin(λ), G = argmin |λ − (λ_R + λ_B) / 2|. Falls back to position
+// (length-1, mid, 0) only when fewer than three filters carry a wavelength.
+function resolveRgbDefaults(filterList) {
+    const named = {
+        r: filterList.indexOf(DEFAULT_RGB_FILTERS.r),
+        g: filterList.indexOf(DEFAULT_RGB_FILTERS.g),
+        b: filterList.indexOf(DEFAULT_RGB_FILTERS.b),
+    };
+    const result = {
+        r: (named.r >= 0 && WAVELENGTHS[DEFAULT_RGB_FILTERS.r] != null) ? named.r : -1,
+        g: (named.g >= 0 && WAVELENGTHS[DEFAULT_RGB_FILTERS.g] != null) ? named.g : -1,
+        b: (named.b >= 0 && WAVELENGTHS[DEFAULT_RGB_FILTERS.b] != null) ? named.b : -1,
+    };
+    if (result.r >= 0 && result.g >= 0 && result.b >= 0) return result;
+
+    // Build the λ-ranked sublist for any slot the named lookup didn't resolve.
+    const known = [];
+    filterList.forEach((name, i) => {
+        const wl = WAVELENGTHS[name];
+        if (wl != null) known.push({i, wl});
+    });
+
+    if (known.length < 3) {
+        // Pathological filter set — keep the page loading via position fallback.
+        return {
+            r: result.r >= 0 ? result.r : Math.max(0, filterList.length - 1),
+            g: result.g >= 0 ? result.g : Math.floor(filterList.length / 2),
+            b: result.b >= 0 ? result.b : 0,
+        };
+    }
+
+    known.sort((a, b) => a.wl - b.wl);
+    const lo = known[0];
+    const hi = known[known.length - 1];
+    const midWl = (lo.wl + hi.wl) / 2;
+    let midPick = known[0];
+    let midDist = Infinity;
+    for (const k of known) {
+        const d = Math.abs(k.wl - midWl);
+        if (d < midDist) {
+            midDist = d;
+            midPick = k;
+        }
+    }
+
+    if (result.r < 0) result.r = hi.i;
+    if (result.b < 0) result.b = lo.i;
+    if (result.g < 0) result.g = midPick.i;
+    return result;
 }
 
 // Filter state is recomputed when the dataset/datacube changes — keep
@@ -23,6 +77,8 @@ function defaultRgbIndex(filterName, fallback) {
 // reference it without rereading the DOM. Initialized from the
 // server-injected FILTERS constant, refreshed via the filters endpoint.
 let currentFilters = FILTERS.slice();
+
+const _initialRgb = resolveRgbDefaults(currentFilters);
 
 const state = {
     dataset: DEFAULT_DATASET,
@@ -35,9 +91,13 @@ const state = {
     clumps: [],
     showCentroids: false,
     viewMode: "single", // "single" or "rgb"
-    rgbR: defaultRgbIndex(DEFAULT_RGB_FILTERS.r, FILTERS.length - 1),
-    rgbG: defaultRgbIndex(DEFAULT_RGB_FILTERS.g, Math.floor(FILTERS.length / 2)),
-    rgbB: defaultRgbIndex(DEFAULT_RGB_FILTERS.b, 0),
+    rgbR: _initialRgb.r,
+    rgbG: _initialRgb.g,
+    rgbB: _initialRgb.b,
+    // Wavelength offsets (µm) locked at datacube load. Anchor changes snap
+    // the other two slots to the filters nearest λ_anchor ± these Δs.
+    rgbDeltaRG: null,
+    rgbDeltaGB: null,
     rgbQ: 8.0,
     rgbMethod: "percentile_asinh",
 };
@@ -87,9 +147,10 @@ async function onDatasetChanged() {
 function rebuildRGBSelects() {
     const selects = ["rgb-r", "rgb-g", "rgb-b"];
     // Re-derive defaults against the currently-loaded filter set.
-    state.rgbR = defaultRgbIndexFrom(currentFilters, DEFAULT_RGB_FILTERS.r, currentFilters.length - 1);
-    state.rgbG = defaultRgbIndexFrom(currentFilters, DEFAULT_RGB_FILTERS.g, Math.floor(currentFilters.length / 2));
-    state.rgbB = defaultRgbIndexFrom(currentFilters, DEFAULT_RGB_FILTERS.b, 0);
+    const resolved = resolveRgbDefaults(currentFilters);
+    state.rgbR = resolved.r;
+    state.rgbG = resolved.g;
+    state.rgbB = resolved.b;
     const defaults = [state.rgbR, state.rgbG, state.rgbB];
     selects.forEach((id, idx) => {
         const sel = document.getElementById(id);
@@ -103,12 +164,9 @@ function rebuildRGBSelects() {
             sel.appendChild(opt);
         });
     });
-    updateRGBFilterOptions();
-}
-
-function defaultRgbIndexFrom(filterList, filterName, fallback) {
-    const idx = filterList.indexOf(filterName);
-    return idx >= 0 ? idx : fallback;
+    captureRgbDeltas();
+    snapRgbFromAnchor("R");
+    syncRgbSelects();
 }
 
 const plotlyConfig = {
@@ -149,59 +207,79 @@ function populateRGBSelects() {
             sel.appendChild(opt);
         });
     });
-    updateRGBFilterOptions();
+    captureRgbDeltas();
+    snapRgbFromAnchor("R");
+    syncRgbSelects();
 }
 
-// Enforce λ_R > λ_G > λ_B by disabling invalid options.
-// If current state.rgbG / rgbB violate the constraint, auto-pick the
-// next-longest valid filter beneath the upstream one.
-function updateRGBFilterOptions() {
-    const wlOf = (i) => WAVELENGTHS[currentFilters[i]] ?? -Infinity;
-
-    // G must have λ < λ_R; if violated, pick the longest filter still < λ_R.
-    if (wlOf(state.rgbG) >= wlOf(state.rgbR)) {
-        let best = -1;
-        let bestWl = -Infinity;
-        currentFilters.forEach((name, i) => {
-            const wl = WAVELENGTHS[name] ?? -Infinity;
-            if (wl < wlOf(state.rgbR) && wl > bestWl) {
-                best = i;
-                bestWl = wl;
-            }
-        });
-        if (best >= 0) state.rgbG = best;
+// Capture the locked wavelength offsets ΔRG = λ_R − λ_G and ΔGB = λ_G − λ_B
+// from the currently selected R/G/B triplet. Called once per datacube load.
+// If either Δ is non-positive or unresolvable (degenerate or unsorted default
+// triplet), fall back to BOTH F200W/F115W/F090W constants — partial fallback
+// would mix scales from different sources.
+function captureRgbDeltas() {
+    const wlR = WAVELENGTHS[currentFilters[state.rgbR]];
+    const wlG = WAVELENGTHS[currentFilters[state.rgbG]];
+    const wlB = WAVELENGTHS[currentFilters[state.rgbB]];
+    const dRG = (wlR != null && wlG != null) ? (wlR - wlG) : null;
+    const dGB = (wlG != null && wlB != null) ? (wlG - wlB) : null;
+    if (dRG != null && dGB != null && dRG > 0 && dGB > 0) {
+        state.rgbDeltaRG = dRG;
+        state.rgbDeltaGB = dGB;
+    } else {
+        state.rgbDeltaRG = RGB_DELTA_RG_FALLBACK;
+        state.rgbDeltaGB = RGB_DELTA_GB_FALLBACK;
     }
+}
 
-    // B must have λ < λ_G; same fallback strategy.
-    if (wlOf(state.rgbB) >= wlOf(state.rgbG)) {
-        let best = -1;
-        let bestWl = -Infinity;
-        currentFilters.forEach((name, i) => {
-            const wl = WAVELENGTHS[name] ?? -Infinity;
-            if (wl < wlOf(state.rgbG) && wl > bestWl) {
-                best = i;
-                bestWl = wl;
-            }
-        });
-        if (best >= 0) state.rgbB = best;
+// argmin over currentFilters of |λ − targetWl|. Filters without a WAVELENGTHS
+// entry are skipped. Returns the supplied fallback index if none qualify.
+function nearestFilterIndex(targetWl, fallbackIndex) {
+    let best = -1;
+    let bestDist = Infinity;
+    currentFilters.forEach((name, i) => {
+        const wl = WAVELENGTHS[name];
+        if (wl == null) return;
+        const d = Math.abs(wl - targetWl);
+        if (d < bestDist) {
+            best = i;
+            bestDist = d;
+        }
+    });
+    return best >= 0 ? best : fallbackIndex;
+}
+
+// Anchor in {"R","G","B"}. Snaps the two non-anchor slots to the filters
+// nearest the locked-offset targets relative to the anchor's wavelength.
+function snapRgbFromAnchor(anchor) {
+    const anchorIdx = state["rgb" + anchor];
+    const wlAnchor = WAVELENGTHS[currentFilters[anchorIdx]];
+    if (wlAnchor == null) return;  // anchor has no λ — nothing to snap to.
+
+    const dRG = state.rgbDeltaRG;
+    const dGB = state.rgbDeltaGB;
+
+    if (anchor === "R") {
+        state.rgbG = nearestFilterIndex(wlAnchor - dRG, state.rgbG);
+        state.rgbB = nearestFilterIndex(wlAnchor - dRG - dGB, state.rgbB);
+    } else if (anchor === "G") {
+        state.rgbR = nearestFilterIndex(wlAnchor + dRG, state.rgbR);
+        state.rgbB = nearestFilterIndex(wlAnchor - dGB, state.rgbB);
+    } else if (anchor === "B") {
+        state.rgbG = nearestFilterIndex(wlAnchor + dGB, state.rgbG);
+        state.rgbR = nearestFilterIndex(wlAnchor + dGB + dRG, state.rgbR);
     }
+}
 
-    // Apply disabled flags + sync selected values to the (possibly updated) state.
-    const limits = {
-        "rgb-r": Infinity,
-        "rgb-g": wlOf(state.rgbR),
-        "rgb-b": wlOf(state.rgbG),
-    };
-    const current = {"rgb-r": state.rgbR, "rgb-g": state.rgbG, "rgb-b": state.rgbB};
-    for (const id of Object.keys(limits)) {
+// Sync the three <select>.value to the current state. Re-enables every
+// option (the locked-Δ snap rule means no option needs to be disabled).
+function syncRgbSelects() {
+    const ids = {"rgb-r": state.rgbR, "rgb-g": state.rgbG, "rgb-b": state.rgbB};
+    for (const id of Object.keys(ids)) {
         const sel = document.getElementById(id);
         if (!sel) continue;
-        const max = limits[id];
-        for (const opt of sel.options) {
-            const wl = WAVELENGTHS[currentFilters[parseInt(opt.value)]] ?? -Infinity;
-            opt.disabled = !(wl < max);
-        }
-        sel.value = String(current[id]);
+        for (const opt of sel.options) opt.disabled = false;
+        sel.value = String(ids[id]);
     }
 }
 
@@ -247,19 +325,22 @@ function setupEventListeners() {
     // RGB filter selectors
     document.getElementById("rgb-r").addEventListener("change", (e) => {
         state.rgbR = parseInt(e.target.value);
-        updateRGBFilterOptions();
+        snapRgbFromAnchor("R");
+        syncRgbSelects();
         updateFilterLabel();
         renderViewer();
     });
     document.getElementById("rgb-g").addEventListener("change", (e) => {
         state.rgbG = parseInt(e.target.value);
-        updateRGBFilterOptions();
+        snapRgbFromAnchor("G");
+        syncRgbSelects();
         updateFilterLabel();
         renderViewer();
     });
     document.getElementById("rgb-b").addEventListener("change", (e) => {
         state.rgbB = parseInt(e.target.value);
-        updateRGBFilterOptions();
+        snapRgbFromAnchor("B");
+        syncRgbSelects();
         updateFilterLabel();
         renderViewer();
     });
