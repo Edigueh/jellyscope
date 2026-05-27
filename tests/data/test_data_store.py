@@ -19,14 +19,14 @@ def test_discovers_subdirectory_datasets(config):
     store = DataStore.get(config)
     names = store.list_datasets()
     assert "A2744_F1228" in names
-    assert "jellyfish_1" in names
+    assert "A2744_HLS001428_302334" in names
     assert "jellyfish_5" in names
     assert store.default_dataset in names
 
 
 def test_dataset_with_only_matched_cube_loads(config):
     store = DataStore.get(config)
-    ds = store.get_dataset("jellyfish_1")
+    ds = store.get_dataset("A2744_HLS001428_302334")
     assert NIRCAM_MATCHED in ds.datacubes
     assert NIRCAM not in ds.datacubes
     assert ds.clumps is not None

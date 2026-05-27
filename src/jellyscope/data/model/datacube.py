@@ -18,7 +18,7 @@ class DataCube:
         filepath = Path(filepath)
         with fits.open(filepath) as hdul:
             # Extracts the raw pixel data and converts to float64 for precision.
-            self.data: np.ndarray = hdul[0].data.astype(np.float64)
+            self.data: np.ndarray = np.ascontiguousarray(hdul[0].data, dtype=np.float64)
             # The header contains metadata such as telescope name, exposure time...
             self.header = hdul[0].header
             # Initializes the WCS to map (x, y) to celestial coordinates.
@@ -51,7 +51,8 @@ class DataCube:
         """Return 2D array (ny, nx) for a single filter channel."""
         if not 0 <= channel_index < self.n_channels:
             raise IndexError(f"Channel index {channel_index} out of range [0, {self.n_channels})")
-        return np.asarray(self.data[channel_index])
+        slice_: np.ndarray = self.data[channel_index]
+        return slice_
 
     def get_slice_by_name(self, filter_name: str) -> np.ndarray:
         """Return 2D slice by filter name (e.g., 'F200W')"""
@@ -80,7 +81,7 @@ class DataCube:
     def to_json_slice(self, channel_index: int) -> list[list[float | None]]:
         """Return a 2D slice as nested lists, with NaN replaced by None for Plotly."""
         arr = self.get_slice_by_channel_index(channel_index)
-        result = []
-        for row in arr:
-            result.append([None if np.isnan(v) else float(v) for v in row])
+        out = arr.astype(object)
+        out[np.isnan(arr)] = None
+        result: list[list[float | None]] = out.tolist()
         return result
