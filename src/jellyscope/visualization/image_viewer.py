@@ -4,9 +4,17 @@ from collections.abc import Callable
 from typing import Any
 
 import numpy as np
+from astropy.wcs import WCS
 
 from jellyscope.data.data_store import DataCube
 from jellyscope.data.model.clumps import ClumpCatalog, ClumpProperties
+from jellyscope.data.model.coordinates import (
+    arcsec_axis,
+    image_axis_bounds,
+    pixel_scale_arcsec,
+    pixel_to_skycoord,
+    pixels_to_radec_arrays,
+)
 
 _RED: str = "#ff4444"
 _BLUE: str = "#00ccff"
@@ -126,69 +134,196 @@ def create_galaxy_heatmap(
     slice_data: np.ndarray,
     colorscale: str = "viridis",
     stretch: str = "log",
+    wcs: WCS | None = None,
 ) -> dict[str, Any]:
-    """Create a Plotly heatmap trace for a datacube slice."""
+    """Create a Plotly heatmap trace for a datacube slice.
+
+    When ``wcs`` is celestial, the trace's ``x``/``y`` arrays are arcsec
+    offsets from the image center and per-cell ``customdata`` carries
+    ``[x_pix, y_pix, ra_deg, dec_deg]`` so hover reveals pixel + RA/Dec.
+    """
     z = []
     for row in _normalize_stretch(data=slice_data, stretch=stretch):
         z.append([None if np.isnan(v) else float(v) for v in row])
-    return {
+
+    trace: dict[str, Any] = {
         "type": "heatmap",
         "z": z,
         "colorscale": colorscale,
         "hoverongaps": False,
-        "hovertemplate": "x: %{x}<br>y: %{y}<br>flux: %{z:.4f}<extra></extra>",
         "showscale": True,
         "colorbar": {"title": "Flux (stretched)", "thickness": 15},
     }
+
+    has_sky = wcs is not None and wcs.has_celestial
+    if has_sky:
+        ny, nx = slice_data.shape
+        sec_pix = pixel_scale_arcsec(wcs)
+        trace["x"] = arcsec_axis(nx, sec_pix).tolist()
+        trace["y"] = arcsec_axis(ny, sec_pix).tolist()
+
+        # Vectorized RA/Dec for every pixel via pixel_to_world(meshgrid).
+        xx_pix, yy_pix = np.meshgrid(
+            np.arange(nx, dtype=np.float64), np.arange(ny, dtype=np.float64)
+        )
+        try:
+            sky = pixel_to_skycoord(xx_pix, yy_pix, wcs)
+            ra = np.asarray(sky.ra.deg, dtype=np.float64)
+            dec = np.asarray(sky.dec.deg, dtype=np.float64)
+        except Exception:  # pragma: no cover - defensive
+            ra = np.full((ny, nx), np.nan)
+            dec = np.full((ny, nx), np.nan)
+
+        # Plotly customdata for heatmap: shape (ny, nx, k); k=4 here.
+        # Use Python lists so non-finite values serialize as null/None.
+        customdata: list[list[list[float | int | None]]] = []
+        for j in range(ny):
+            row_cd: list[list[float | int | None]] = []
+            for i in range(nx):
+                r = ra[j, i]
+                d = dec[j, i]
+                row_cd.append(
+                    [
+                        int(i),
+                        int(j),
+                        float(r) if np.isfinite(r) else None,
+                        float(d) if np.isfinite(d) else None,
+                    ]
+                )
+            customdata.append(row_cd)
+        trace["customdata"] = customdata
+        trace["hovertemplate"] = (
+            "pix: (%{customdata[0]:d}, %{customdata[1]:d})<br>"
+            'sky: (%{x:.3f}", %{y:.3f}")<br>'
+            "RA: %{customdata[2]:.6f}°<br>"
+            "Dec: %{customdata[3]:.6f}°<br>"
+            "flux: %{z:.4f}<extra></extra>"
+        )
+    else:
+        trace["hovertemplate"] = "x: %{x}<br>y: %{y}<br>flux: %{z:.4f}<extra></extra>"
+
+    return trace
 
 
 def create_clump_boundary_traces(
     clumps: ClumpCatalog,
     selected_ids: list[int] | None = None,
+    wcs: WCS | None = None,
 ) -> list[dict[str, Any]]:
-    """Create Plotly scatter traces for clump boundaries."""
+    """Create Plotly scatter traces for clump boundaries.
+
+    When ``wcs`` is celestial, vertices are placed in arcsec offsets from the
+    image center and each carries ``[x_pix, y_pix, ra_deg, dec_deg]`` in
+    ``customdata`` for hover.
+    """
     select = set(selected_ids or [])
+    has_sky = wcs is not None and wcs.has_celestial
+    sec_pix = pixel_scale_arcsec(wcs) if has_sky else 0.0
+    cx = (clumps.nx - 1) / 2.0
+    cy = (clumps.ny - 1) / 2.0
+
     traces: list[dict[str, Any]] = []
     for cid, boundary in clumps.get_all_boundaries().items():
-        xs = [p[0] for p in boundary]
-        ys = [p[1] for p in boundary]
+        xs_pix = [p[0] for p in boundary]
+        ys_pix = [p[1] for p in boundary]
         is_selected = cid in select
         c: ClumpProperties = clumps.get_clump_by_id(cid)
-        traces.append(
-            {
-                "type": "scatter",
-                "x": xs,
-                "y": ys,
-                "mode": "lines",
-                "line": {
-                    "color": _RED if is_selected else _BLUE,
-                    "width": 2.5 if is_selected else 1.2,
-                },
-                "name": f"Clump {cid}",
-                "hoverinfo": "text",
-                "text": f"Clump {cid} ({c.component})",
-                "showlegend": False,
-            }
-        )
+
+        if has_sky:
+            xs_plot = [(x - cx) * sec_pix for x in xs_pix]
+            ys_plot = [(y - cy) * sec_pix for y in ys_pix]
+        else:
+            xs_plot = list(xs_pix)
+            ys_plot = list(ys_pix)
+
+        trace: dict[str, Any] = {
+            "type": "scatter",
+            "x": xs_plot,
+            "y": ys_plot,
+            "mode": "lines",
+            "line": {
+                "color": _RED if is_selected else _BLUE,
+                "width": 2.5 if is_selected else 1.2,
+            },
+            "name": f"Clump {cid}",
+            "showlegend": False,
+        }
+
+        if has_sky:
+            try:
+                ra_arr, dec_arr, finite = pixels_to_radec_arrays(xs_pix, ys_pix, wcs)
+                customdata = [
+                    [
+                        float(xp),
+                        float(yp),
+                        float(ra) if ok else None,
+                        float(dec) if ok else None,
+                    ]
+                    for xp, yp, ra, dec, ok in zip(
+                        xs_pix, ys_pix, ra_arr, dec_arr, finite, strict=True
+                    )
+                ]
+                trace["customdata"] = customdata
+                trace["hovertemplate"] = (
+                    f"Clump {cid} ({c.component})<br>"
+                    "pix: (%{customdata[0]:.0f}, %{customdata[1]:.0f})<br>"
+                    'sky: (%{x:.3f}", %{y:.3f}")<br>'
+                    "RA: %{customdata[2]:.6f}°<br>"
+                    "Dec: %{customdata[3]:.6f}°<extra></extra>"
+                )
+            except Exception:  # pragma: no cover - defensive
+                trace["hoverinfo"] = "text"
+                trace["text"] = f"Clump {cid} ({c.component})"
+        else:
+            trace["hoverinfo"] = "text"
+            trace["text"] = f"Clump {cid} ({c.component})"
+
+        traces.append(trace)
     return traces
 
 
-def create_centroid_markers(clumps: ClumpCatalog) -> dict[str, Any]:
+def create_centroid_markers(clumps: ClumpCatalog, wcs: WCS | None = None) -> dict[str, Any]:
     """Create scatter trace of clump centroids with labels."""
     all_clumps: list[ClumpProperties] = clumps.list_clumps()
-    return {
+    has_sky = (wcs is not None and wcs.has_celestial) or any(
+        c.ra_deg is not None for c in all_clumps
+    )
+    sec_pix = pixel_scale_arcsec(wcs) if (wcs is not None and wcs.has_celestial) else 0.0
+    cx = (clumps.nx - 1) / 2.0
+    cy = (clumps.ny - 1) / 2.0
+
+    if has_sky and sec_pix > 0:
+        xs_plot = [(c.x0 - cx) * sec_pix for c in all_clumps]
+        ys_plot = [(c.y0 - cy) * sec_pix for c in all_clumps]
+    else:
+        xs_plot = [c.x0 for c in all_clumps]
+        ys_plot = [c.y0 for c in all_clumps]
+
+    trace: dict[str, Any] = {
         "type": "scatter",
-        "x": [c.x0 for c in all_clumps],
-        "y": [c.y0 for c in all_clumps],
+        "x": xs_plot,
+        "y": ys_plot,
         "mode": "markers+text",
         "marker": {"color": _WHITE, "size": 5, "symbol": "x"},
         "text": [str(c.clump_id) for c in all_clumps],
         "textposition": "top right",
         "textfont": {"color": _GRAY, "size": 9},
-        "hovertemplate": ("Clump %{text}<br>x: %{x:.1f}<br>y: %{y:.1f}<extra></extra>"),
         "name": "Centroids",
         "showlegend": False,
     }
+
+    if has_sky:
+        trace["customdata"] = [[c.x0, c.y0, c.ra_deg, c.dec_deg] for c in all_clumps]
+        trace["hovertemplate"] = (
+            "Clump %{text}<br>"
+            "pix: (%{customdata[0]:.1f}, %{customdata[1]:.1f})<br>"
+            'sky: (%{x:.3f}", %{y:.3f}")<br>'
+            "RA: %{customdata[2]:.6f}°<br>"
+            "Dec: %{customdata[3]:.6f}°<extra></extra>"
+        )
+    else:
+        trace["hovertemplate"] = "Clump %{text}<br>x: %{x:.1f}<br>y: %{y:.1f}<extra></extra>"
+    return trace
 
 
 def build_viewer_figure(
@@ -203,9 +338,23 @@ def build_viewer_figure(
     slice_data: np.ndarray = datacube.get_slice_by_channel_index(channel_index)
     filter_name: str = datacube.filter_names[channel_index]
 
-    heatmap: dict[str, Any] = create_galaxy_heatmap(slice_data, colorscale, stretch)
-    boundaries: list[dict[str, Any]] = create_clump_boundary_traces(clumps, selected_ids)
-    centroids: dict[str, Any] = create_centroid_markers(clumps)
+    has_sky = datacube.wcs is not None and datacube.wcs.has_celestial
+    axis_label_x = "x offset (arcsec)" if has_sky else "x (pixels)"
+    axis_label_y = "y offset (arcsec)" if has_sky else "y (pixels)"
+
+    ny, nx = slice_data.shape
+    sec_pix = pixel_scale_arcsec(datacube.wcs) if has_sky else None
+    bounds = image_axis_bounds(nx, ny, sec_pix)
+    x_min, x_max = bounds["x"]
+    y_min, y_max = bounds["y"]
+
+    heatmap: dict[str, Any] = create_galaxy_heatmap(
+        slice_data, colorscale, stretch, wcs=datacube.wcs
+    )
+    boundaries: list[dict[str, Any]] = create_clump_boundary_traces(
+        clumps, selected_ids, wcs=datacube.wcs
+    )
+    centroids: dict[str, Any] = create_centroid_markers(clumps, wcs=datacube.wcs)
 
     # *boundaries unpacks the list from. E.g: boundaries = [a, b, c...]; *boundaries = a, b, c...
     data: list[dict[str, Any]] = [heatmap, *boundaries, centroids]
@@ -216,22 +365,36 @@ def build_viewer_figure(
             "font": {"color": _GRAY},
         },
         "xaxis": {
-            "title": "x (pixels)",
+            "title": axis_label_x,
             "scaleanchor": "y",
             "constrain": "domain",
             "gridcolor": _SOFT_BLACK,
             "color": _DARK_GRAY,
+            "range": [x_min, x_max],
+            "minallowed": x_min,
+            "maxallowed": x_max,
+            "autorange": False,
         },
         "yaxis": {
-            "title": "y (pixels)",
+            "title": axis_label_y,
             "gridcolor": _SOFT_BLACK,
             "color": _DARK_GRAY,
+            "range": [y_min, y_max],
+            "minallowed": y_min,
+            "maxallowed": y_max,
+            "autorange": False,
         },
         "plot_bgcolor": _DARK_BLUE,
         "paper_bgcolor": _SOFT_DARK_BLUE,
         "font": {"color": _GRAY},
         "margin": {"l": 50, "r": 20, "t": 40, "b": 50},
         "dragmode": "pan",
+        "meta": {
+            "imageBounds": {
+                "x_min_span": bounds["x_min_span"],
+                "y_min_span": bounds["y_min_span"],
+            }
+        },
     }
 
     return {"data": data, "layout": layout}

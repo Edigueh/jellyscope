@@ -93,6 +93,15 @@ class DataStore:
         # Use the base nircam cube as reference if present, otherwise matched.
         ref = ds.datacubes.get(NIRCAM) or ds.datacubes[NIRCAM_MATCHED]
         ds.clumps = ClumpCatalog(props_path, pixels_path, ref.spatial_shape)
+
+        # Attach RA/Dec to clump centroids when the reference WCS is celestial.
+        # Without this, ra_deg / dec_deg stay None and the separations endpoint
+        # returns 422; the rest of the app keeps working.
+        if ref.wcs is not None and ref.wcs.has_celestial:
+            ds.clumps.attach_skycoords(ref.wcs)
+        else:
+            logger.warning("Dataset '%s': no celestial WCS — RA/Dec disabled", name)
+
         return ds
 
     # Dataset access.

@@ -5,13 +5,20 @@ Handles the representation, spatial mapping, and geometric boundaries
 of detected clumps (e.g., star-forming regions in a galaxy).
 """
 
+import logging
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
+from astropy.coordinates import SkyCoord
+from astropy.wcs import WCS
 from pydantic import BaseModel
 from scipy.spatial import ConvexHull, QhullError
+
+from jellyscope.data.model.coordinates import pixel_to_skycoord
+
+logger = logging.getLogger(__name__)
 
 
 class ClumpProperties(BaseModel):
@@ -28,6 +35,9 @@ class ClumpProperties(BaseModel):
         r_eff_kpc: Effective radius in kiloparsecs.
         inside: Boolean flag (e.g., if the clump is within a specific galactic radius).
         component: Structural classification (e.g., 'disk', 'bulge', 'outlier').
+        ra_deg, dec_deg: Centroid sky coordinates in degrees. Populated by
+            ``ClumpCatalog.attach_skycoords`` when a celestial WCS is available;
+            ``None`` otherwise.
     """
 
     clump_id: int
@@ -40,6 +50,8 @@ class ClumpProperties(BaseModel):
     r_eff_kpc2: float
     inside: bool
     component: str
+    ra_deg: float | None = None
+    dec_deg: float | None = None
 
 
 class ClumpCatalog:
@@ -109,6 +121,9 @@ class ClumpCatalog:
 
         # Lazy-loaded cache for geometric boundaries
         self._boundaries: dict[int, list[tuple[float, float]]] = {}
+
+        # Populated by ``attach_skycoords`` when a celestial WCS is available.
+        self._centroid_skycoords: SkyCoord | None = None
 
     def _is_coordinate_in_bounds(self, x: int, y: int) -> bool:
         return 0 <= x < self.nx and 0 <= y < self.ny
@@ -199,6 +214,39 @@ class ClumpCatalog:
             filtered_clump_list = [c for c in filtered_clump_list if c.inside == inside]
         return filtered_clump_list
 
+    def attach_skycoords(self, wcs: WCS) -> None:
+        """Compute and cache RA/Dec for every clump centroid using ``wcs``.
+
+        Uses ``pixel_to_skycoord`` for the projection so all sky-coordinate
+        logic stays in one module. The resulting SkyCoord vector is cached on
+        ``self._centroid_skycoords`` for the pairwise-separations endpoint.
+        """
+        clump_list = self.list_clumps()
+        if not clump_list:
+            self._centroid_skycoords = None
+            return
+
+        xs = np.array([c.x0 for c in clump_list], dtype=np.float64)
+        ys = np.array([c.y0 for c in clump_list], dtype=np.float64)
+        try:
+            coords: SkyCoord = pixel_to_skycoord(xs, ys, wcs)
+        except Exception:  # pragma: no cover - astropy edge case
+            logger.exception("attach_skycoords: pixel_to_world failed")
+            self._centroid_skycoords = None
+            return
+
+        ra_arr = np.asarray(coords.ra.deg, dtype=np.float64)
+        dec_arr = np.asarray(coords.dec.deg, dtype=np.float64)
+        for c, ra, dec in zip(clump_list, ra_arr, dec_arr, strict=True):
+            c.ra_deg = float(ra) if np.isfinite(ra) else None
+            c.dec_deg = float(dec) if np.isfinite(dec) else None
+
+        self._centroid_skycoords = coords
+
+    def centroid_skycoords(self) -> SkyCoord | None:
+        """Return cached centroid SkyCoord vector, or None if WCS unavailable."""
+        return self._centroid_skycoords
+
     def to_properties_list(self) -> list[dict[str, Any]]:
         """Return all clump properties as a list of dicts for JSON serialization."""
         return [
@@ -213,6 +261,8 @@ class ClumpCatalog:
                 self.R_EFF_KPC2_KEY: c.r_eff_kpc2,
                 self.INSIDE_KEY: c.inside,
                 self.COMPONENT_KEY: c.component,
+                "ra_deg": c.ra_deg,
+                "dec_deg": c.dec_deg,
             }
             for c in self.list_clumps()
         ]

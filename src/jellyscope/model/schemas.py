@@ -120,3 +120,19 @@ class RGBViewerResponse(BaseModel):
     r_filter: str
     g_filter: str
     b_filter: str
+
+
+class ClumpSeparation(BaseModel):
+    """Pairwise angular (and optional physical) separation between two clumps."""
+
+    clump_a: int
+    clump_b: int
+    sep_arcsec: float
+    sep_pc: float | None = None  # populated once a galaxy distance is configured
+
+
+class ClumpSeparationsResponse(BaseModel):
+    """All unordered i<j clump-pair separations for a dataset."""
+
+    distance_mpc: float | None = None
+    pairs: list[ClumpSeparation]

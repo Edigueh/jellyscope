@@ -2,6 +2,8 @@
 
 from http import HTTPStatus
 
+import pytest
+
 DS = "A2744_F1228"
 BASE = f"/api/datasets/{DS}"
 
@@ -172,3 +174,48 @@ def test_compare_spectra(client):
     data = resp.json()
     assert len(data["spectra"]) == 3
     assert len(data["figure"]["data"]) == 3
+
+
+def test_clump_separations(client):
+    resp = client.get(f"{BASE}/clumps/separations")
+    assert resp.status_code == HTTPStatus.OK
+    data = resp.json()
+    n = 23
+    assert len(data["pairs"]) == n * (n - 1) // 2
+    assert data["distance_mpc"] is None
+    for pair in data["pairs"]:
+        assert pair["clump_a"] < pair["clump_b"]
+        assert pair["sep_arcsec"] > 0
+        assert pair["sep_pc"] is None
+
+
+def test_clump_separations_matches_skycoord(client):
+    from astropy import units as u
+    from astropy.coordinates import SkyCoord
+
+    detail_a = client.get(f"{BASE}/clumps/0").json()
+    detail_b = client.get(f"{BASE}/clumps/1").json()
+    ra_a = float(detail_a["properties"]["RA (deg)"])
+    dec_a = float(detail_a["properties"]["Dec (deg)"])
+    ra_b = float(detail_b["properties"]["RA (deg)"])
+    dec_b = float(detail_b["properties"]["Dec (deg)"])
+    expected = (
+        SkyCoord(ra=ra_a * u.deg, dec=dec_a * u.deg)
+        .separation(SkyCoord(ra=ra_b * u.deg, dec=dec_b * u.deg))
+        .arcsec
+    )
+
+    resp = client.get(f"{BASE}/clumps/separations")
+    pair = next(p for p in resp.json()["pairs"] if p["clump_a"] == 0 and p["clump_b"] == 1)
+    # Properties panel formats RA/Dec to 6 decimal places; that drops ~1e-6 deg
+    # of precision (~3.6 mas), so allow ~10 mas tolerance on a ~1.5" baseline.
+    assert pair["sep_arcsec"] == pytest.approx(expected, abs=0.01)
+
+
+def test_clump_detail_has_radec(client):
+    resp = client.get(f"{BASE}/clumps/0")
+    props = resp.json()["properties"]
+    assert "RA (deg)" in props
+    assert "Dec (deg)" in props
+    assert props["RA (deg)"] != "—"
+    assert props["Dec (deg)"] != "—"

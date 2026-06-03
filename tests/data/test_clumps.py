@@ -150,3 +150,23 @@ class TestClumps:
             "component",
         }
         assert all(keys <= set(p.keys()) for p in props)
+
+    def test_skycoords_attached(self):
+        # DataStore attaches RA/Dec on load when WCS is celestial.
+        coords = self.clumps.centroid_skycoords()
+        assert coords is not None
+        assert len(coords) == 23
+
+        for c in self.clumps.list_clumps():
+            assert c.ra_deg is not None
+            assert c.dec_deg is not None
+            assert -90.0 <= c.dec_deg <= 90.0
+            assert 0.0 <= c.ra_deg <= 360.0
+
+    def test_skycoords_in_properties_list(self):
+        props = self.clumps.to_properties_list()
+        for p in props:
+            assert "ra_deg" in p
+            assert "dec_deg" in p
+            assert p["ra_deg"] is not None
+            assert p["dec_deg"] is not None

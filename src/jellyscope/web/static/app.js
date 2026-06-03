@@ -186,7 +186,7 @@ const plotlyConfig = {
     responsive: true,
     displayModeBar: true,
     modeBarButtonsToRemove: ["toImage", "sendDataToCloud"],
-    scrollZoom: true,
+    scrollZoom: false,
 };
 
 // Generation token: every time the selection changes, we bump this and
@@ -583,13 +583,156 @@ async function renderViewer() {
     viewer.on("plotly_click", onViewerClick);
     viewer.removeAllListeners?.("plotly_selected");
     viewer.on("plotly_selected", onViewerSelected);
+
+    attachZoomOutLock(viewer);
+}
+
+// Custom wheel-zoom for the locked image plots.
+//
+// We replace Plotly's built-in scrollZoom (disabled in plotlyConfig) so we
+// can clamp every new range to the layout's [minallowed, maxallowed] before
+// calling Plotly.relayout. This eliminates the visible bounce that occurs
+// when Plotly's default handler computes a range that overshoots the FOV
+// and is then snapped back by minallowed/maxallowed.
+//
+// The zoom is also floored at min_span (5 pixels worth of axis units, set by
+// the server in layout.meta.imageBounds) so the user cannot zoom past the
+// image's pixel resolution.
+function _readBounds(viewer, axisName) {
+    const axis = viewer.layout?.[axisName];
+    if (!axis || !axis.range) return null;
+    const {minallowed, maxallowed, range} = axis;
+    if (minallowed === undefined || maxallowed === undefined) return null;
+    const [r0, r1] = range;
+    const meta = viewer.layout?.meta?.imageBounds ?? {};
+    const minSpanKey = axisName === "xaxis" ? "x_min_span" : "y_min_span";
+    return {
+        lo: Math.min(r0, r1),
+        hi: Math.max(r0, r1),
+        min: minallowed,
+        max: maxallowed,
+        minSpan: meta[minSpanKey],
+    };
+}
+
+function _clampRange(lo, hi, min, max, minSpan) {
+    const fovSpan = max - min;
+    let span = hi - lo;
+
+    // Floor: if requested span is below minSpan, expand around the center
+    // (capped by fovSpan so we never exceed the FOV).
+    if (minSpan && span < minSpan) {
+        const target = Math.min(minSpan, fovSpan);
+        const center = (lo + hi) / 2;
+        lo = center - target / 2;
+        hi = center + target / 2;
+        span = hi - lo;
+    }
+
+    // Ceiling: never exceed FOV.
+    if (span >= fovSpan) {
+        return [min, max];
+    }
+    if (lo < min) {
+        hi += min - lo;
+        lo = min;
+    }
+    if (hi > max) {
+        lo -= hi - max;
+        hi = max;
+    }
+    return [lo, hi];
+}
+
+function _zoomAxis(b, cursor, factor) {
+    const newLo = cursor - (cursor - b.lo) * factor;
+    const newHi = cursor + (b.hi - cursor) * factor;
+    return _clampRange(newLo, newHi, b.min, b.max, b.minSpan);
+}
+
+function _cursorOnAxis(axis, pixel, fallback) {
+    try {
+        const v = axis?.p2d?.(pixel);
+        if (typeof v === "number" && Number.isFinite(v)) return v;
+    } catch (_) {}
+    return fallback;
+}
+
+function _zoomOnWheel(e) {
+    const div = e.currentTarget;
+    const xa = _readBounds(div, "xaxis");
+    const ya = _readBounds(div, "yaxis");
+    if (!xa || !ya) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const factor = Math.exp(e.deltaY * 0.0015);
+
+    const fullXa = div._fullLayout?.xaxis;
+    const fullYa = div._fullLayout?.yaxis;
+    const rect = div.getBoundingClientRect();
+    const offsetX = e.clientX - rect.left;
+    const offsetY = e.clientY - rect.top;
+    const cx = _cursorOnAxis(fullXa, offsetX, (xa.lo + xa.hi) / 2);
+    const cy = _cursorOnAxis(fullYa, offsetY, (ya.lo + ya.hi) / 2);
+
+    const [xLo, xHi] = _zoomAxis(xa, cx, factor);
+    const [yLo, yHi] = _zoomAxis(ya, cy, factor);
+
+    Plotly.relayout(div, {
+        "xaxis.range": [xLo, xHi],
+        "yaxis.range": [yLo, yHi],
+    });
+}
+
+// Re-clamp ranges produced by external paths (toolbar zoom-in, drag-rectangle,
+// double-click). Plotly fires plotly_relayout *after* applying the range; if
+// the new range is below min_span we relayout once more to grow back up to
+// min_span. The __clamping flag prevents feedback loops.
+function _relayoutClampGuard(eventData) {
+    const div = this;
+    if (div.__clamping) return;
+
+    const xRangeChanged = "xaxis.range" in eventData ||
+        "xaxis.range[0]" in eventData || "xaxis.range[1]" in eventData;
+    const yRangeChanged = "yaxis.range" in eventData ||
+        "yaxis.range[0]" in eventData || "yaxis.range[1]" in eventData;
+    if (!xRangeChanged && !yRangeChanged) return;
+
+    const xa = _readBounds(div, "xaxis");
+    const ya = _readBounds(div, "yaxis");
+    if (!xa || !ya) return;
+
+    const [xLo, xHi] = _clampRange(xa.lo, xa.hi, xa.min, xa.max, xa.minSpan);
+    const [yLo, yHi] = _clampRange(ya.lo, ya.hi, ya.min, ya.max, ya.minSpan);
+
+    const eps = 1e-9;
+    const xChanged = Math.abs(xLo - xa.lo) > eps || Math.abs(xHi - xa.hi) > eps;
+    const yChanged = Math.abs(yLo - ya.lo) > eps || Math.abs(yHi - ya.hi) > eps;
+    if (!xChanged && !yChanged) return;
+
+    div.__clamping = true;
+    Plotly.relayout(div, {
+        "xaxis.range": [xLo, xHi],
+        "yaxis.range": [yLo, yHi],
+    }).finally(() => {
+        div.__clamping = false;
+    });
+}
+
+function attachZoomOutLock(viewer) {
+    if (viewer.__zoomOutLockAttached) return;
+    viewer.addEventListener("wheel", _zoomOnWheel, {capture: true, passive: false});
+    viewer.on("plotly_relayout", _relayoutClampGuard);
+    viewer.__zoomOutLockAttached = true;
 }
 
 async function onViewerClick(eventData) {
     if (!eventData.points || eventData.points.length == 0) return;
     const point = eventData.points[0];
-    const x = Math.round(point.x);
-    const y = Math.round(point.y);
+    // Heatmap pointIndex is [row, col] => [y_pix, x_pix]; axes may be arcsec.
+    const [y, x] = point.pointIndex;
 
     // Check if pixel belongs to a clump.
     const resp = await fetch(`${dsBase()}/pixel/${x}/${y}/clump`);
@@ -608,7 +751,7 @@ async function onViewerSelected(eventData) {
 
     const pixels = eventData.points
         .filter((p) => p.curveNumber == 0) // Only heatmap points.
-        .map((p) => [Math.round(p.x), Math.round(p.y)]);
+        .map((p) => [p.pointIndex[1], p.pointIndex[0]]);
 
     if (pixels.length === 0) return;
 

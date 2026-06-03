@@ -8,9 +8,12 @@ from starlette.responses import HTMLResponse, Response
 
 from jellyscope.config import NIRCAM_WAVELENGTHS
 from jellyscope.data.data_store import Dataset, DataStore
+from jellyscope.data.model.coordinates import skycoord_separation_arcsec
 from jellyscope.model.schemas import (
     ClumpDetailResponse,
     ClumpListItem,
+    ClumpSeparation,
+    ClumpSeparationsResponse,
     ClumpsListResponse,
     CompareRequest,
     CompareResponse,
@@ -196,6 +199,57 @@ def list_clumps(
             for c in clumps
         ]
     )
+
+
+@router.get(
+    "/api/datasets/{dataset_name}/clumps/separations",
+    response_model=ClumpSeparationsResponse,
+)
+def get_clump_separations(dataset_name: str) -> ClumpSeparationsResponse:
+    """Pairwise angular separations between all clump centroids.
+
+    Uses cached SkyCoord centroids from ``ClumpCatalog.attach_skycoords``.
+    Returns 422 when the dataset's WCS lacks celestial axes. ``sep_pc`` is
+    always ``None`` until a galaxy distance is configured (option A).
+    """
+    ds = _dataset(dataset_name)
+    assert ds.clumps is not None
+    coords = ds.clumps.centroid_skycoords()
+    if coords is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Dataset '{dataset_name}' has no celestial WCS — RA/Dec "
+                "unavailable, cannot compute separations."
+            ),
+        )
+
+    clump_list = ds.clumps.list_clumps()
+    pairs: list[ClumpSeparation] = []
+    n = len(clump_list)
+    for i in range(n):
+        ra_i = clump_list[i].ra_deg
+        dec_i = clump_list[i].dec_deg
+        if ra_i is None or dec_i is None:
+            continue
+        for j in range(i + 1, n):
+            ra_j = clump_list[j].ra_deg
+            dec_j = clump_list[j].dec_deg
+            if ra_j is None or dec_j is None:
+                continue
+            sep = skycoord_separation_arcsec(coords[i], coords[j])
+            if not np.isfinite(sep):
+                continue
+            pairs.append(
+                ClumpSeparation(
+                    clump_a=clump_list[i].clump_id,
+                    clump_b=clump_list[j].clump_id,
+                    sep_arcsec=float(sep),
+                    sep_pc=None,
+                )
+            )
+
+    return ClumpSeparationsResponse(distance_mpc=None, pairs=pairs)
 
 
 @router.get("/api/datasets/{dataset_name}/clumps/{clump_id}", response_model=ClumpDetailResponse)

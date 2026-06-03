@@ -18,6 +18,13 @@ from PIL import Image as PILImage
 
 from jellyscope.data.data_store import DataCube
 from jellyscope.data.model.clumps import ClumpCatalog
+from jellyscope.data.model.coordinates import (
+    arcsec_axis,
+    image_arcsec_extent,
+    image_axis_bounds,
+    pixel_scale_arcsec,
+    pixel_to_skycoord,
+)
 from jellyscope.visualization.image_viewer import (
     _estimate_background,
     create_centroid_markers,
@@ -210,18 +217,60 @@ def build_rgb_figure(
         rgb = percentile_asinh_composite(r_data, g_data, b_data)
 
     ny, nx = rgb.shape[:2]
+    has_sky = datacube.wcs is not None and datacube.wcs.has_celestial
+    sec_pix: float | None = pixel_scale_arcsec(datacube.wcs) if has_sky else None
 
     click_target: dict[str, Any] = {
         "type": "heatmap",
         "z": np.zeros((ny, nx)).tolist(),
         "showscale": False,
-        "hoverinfo": "skip",
         "opacity": 0,
         "colorscale": [[0, "rgba(0,0,0,0)"], [1, "rgba(0,0,0,0)"]],
     }
 
-    boundaries = create_clump_boundary_traces(clumps, selected_ids)
-    centroids = create_centroid_markers(clumps)
+    if has_sky and sec_pix is not None:
+        click_target["x"] = arcsec_axis(nx, sec_pix).tolist()
+        click_target["y"] = arcsec_axis(ny, sec_pix).tolist()
+
+        # Per-cell pixel + RA/Dec for hover.
+        xx_pix, yy_pix = np.meshgrid(
+            np.arange(nx, dtype=np.float64), np.arange(ny, dtype=np.float64)
+        )
+        try:
+            sky = pixel_to_skycoord(xx_pix, yy_pix, datacube.wcs)
+            ra = np.asarray(sky.ra.deg, dtype=np.float64)
+            dec = np.asarray(sky.dec.deg, dtype=np.float64)
+        except Exception:  # pragma: no cover - defensive
+            ra = np.full((ny, nx), np.nan)
+            dec = np.full((ny, nx), np.nan)
+
+        customdata: list[list[list[float | int | None]]] = []
+        for j in range(ny):
+            row_cd: list[list[float | int | None]] = []
+            for i in range(nx):
+                r = ra[j, i]
+                d = dec[j, i]
+                row_cd.append(
+                    [
+                        int(i),
+                        int(j),
+                        float(r) if np.isfinite(r) else None,
+                        float(d) if np.isfinite(d) else None,
+                    ]
+                )
+            customdata.append(row_cd)
+        click_target["customdata"] = customdata
+        click_target["hovertemplate"] = (
+            "pix: (%{customdata[0]:d}, %{customdata[1]:d})<br>"
+            'sky: (%{x:.3f}", %{y:.3f}")<br>'
+            "RA: %{customdata[2]:.6f}°<br>"
+            "Dec: %{customdata[3]:.6f}°<extra></extra>"
+        )
+    else:
+        click_target["hoverinfo"] = "skip"
+
+    boundaries = create_clump_boundary_traces(clumps, selected_ids, wcs=datacube.wcs)
+    centroids = create_centroid_markers(clumps, wcs=datacube.wcs)
 
     data: list[dict[str, Any]] = [click_target, *boundaries, centroids]
 
@@ -229,38 +278,65 @@ def build_rgb_figure(
     g_name = datacube.filter_names[g_index]
     b_name = datacube.filter_names[b_index]
 
+    if has_sky and sec_pix is not None:
+        extent = image_arcsec_extent(nx, ny, sec_pix)
+        axis_label_x = "x offset (arcsec)"
+        axis_label_y = "y offset (arcsec)"
+    else:
+        extent = {"x": 0, "y": 0, "sizex": nx, "sizey": ny}
+        axis_label_x = "x (pixels)"
+        axis_label_y = "y (pixels)"
+
+    bounds = image_axis_bounds(nx, ny, sec_pix)
+    x_min, x_max = bounds["x"]
+    y_min, y_max = bounds["y"]
+
     layout: dict[str, Any] = {
         "title": {
             "text": f"RGB: {r_name} / {g_name} / {b_name}",
             "font": {"color": _GRAY},
         },
         "xaxis": {
-            "title": "x (pixels)",
+            "title": axis_label_x,
             "scaleanchor": "y",
             "constrain": "domain",
             "gridcolor": _SOFT_BLACK,
             "color": _DARK_GRAY,
+            "range": [x_min, x_max],
+            "minallowed": x_min,
+            "maxallowed": x_max,
+            "autorange": False,
         },
         "yaxis": {
-            "title": "y (pixels)",
+            "title": axis_label_y,
             "gridcolor": _SOFT_BLACK,
             "color": _DARK_GRAY,
+            "range": [y_min, y_max],
+            "minallowed": y_min,
+            "maxallowed": y_max,
+            "autorange": False,
         },
         "plot_bgcolor": _DARK_BLUE,
         "paper_bgcolor": _SOFT_DARK_BLUE,
         "font": {"color": _GRAY},
         "margin": {"l": 50, "r": 20, "t": 40, "b": 50},
         "dragmode": "pan",
+        "meta": {
+            "imageBounds": {
+                "x_min_span": bounds["x_min_span"],
+                "y_min_span": bounds["y_min_span"],
+            }
+        },
         "images": [
             {
                 "source": _rgb_to_png_data_url(rgb),
                 "xref": "x",
                 "yref": "y",
-                "x": 0,
-                "y": 0,
+                "x": extent["x"],
+                "y": extent["y"],
                 "yanchor": "bottom",
-                "sizex": nx,
-                "sizey": ny,
+                "sizex": extent["sizex"],
+                "sizey": extent["sizey"],
                 "sizing": "stretch",
                 "layer": "below",
             }

@@ -4,6 +4,7 @@ import base64
 import io
 
 import numpy as np
+import pytest
 from PIL import Image as PILImage
 
 from jellyscope.data.data_store import DataStore
@@ -194,8 +195,9 @@ class TestBuildRGBFigure:
         assert img["xref"] == "x"
         assert img["yref"] == "y"
         assert img["sizing"] == "stretch"
-        assert img["x"] == 0
-        assert img["y"] == 0
+        # Image is centered on (0, 0) in arcsec offsets.
+        assert img["x"] < 0
+        assert img["y"] < 0
         assert img["source"].startswith("data:image/png;base64,")
 
     def test_no_yaxis_autorange_reversed(self, store: DataStore):
@@ -204,31 +206,40 @@ class TestBuildRGBFigure:
         assert yaxis.get("autorange") != "reversed"
 
     def test_png_dimensions_match_datacube(self, store: DataStore):
+        from jellyscope.data.model.coordinates import pixel_scale_arcsec
+
         fig = self._build(store)
         dataset = store.get_dataset(store.list_datasets()[0])
         datacube = dataset.get_datacube(dataset.list_datacubes()[0])
         ny, nx = datacube.spatial_shape
+        sec_pix = pixel_scale_arcsec(datacube.wcs)
         img = fig["layout"]["images"][0]
-        assert img["sizex"] == nx
-        assert img["sizey"] == ny
-        # Decode PNG and confirm dimensions.
+        assert img["sizex"] == pytest.approx(nx * sec_pix, rel=1e-9)
+        assert img["sizey"] == pytest.approx(ny * sec_pix, rel=1e-9)
+        # Decode PNG and confirm dimensions still match the source pixel grid.
         b64 = img["source"].removeprefix("data:image/png;base64,")
         png_bytes = base64.b64decode(b64)
         png = PILImage.open(io.BytesIO(png_bytes))
         assert png.size == (nx, ny)
 
-    def test_centroid_y_is_raw_fits_y(self, store: DataStore):
-        """Regression: triple-flip set centroid y to ny-1-y0. Ensure raw y0 is used."""
+    def test_centroid_y_is_arcsec_offset(self, store: DataStore):
+        """Centroid y must equal (y0 - (ny-1)/2) * arcsec_per_pix."""
+        from jellyscope.data.model.coordinates import pixel_scale_arcsec
+
         fig = self._build(store)
         clumps = store.get_clumps(store.list_datasets()[0])
+        dataset = store.get_dataset(store.list_datasets()[0])
+        datacube = dataset.get_datacube(dataset.list_datacubes()[0])
         clump_list = clumps.list_clumps()
         if not clump_list:
-            return  # nothing to assert
-        # Centroid trace is the last data entry.
+            return
+        ny, _ = datacube.spatial_shape
+        sec_pix = pixel_scale_arcsec(datacube.wcs)
+        cy = (ny - 1) / 2.0
         centroids = fig["data"][-1]
-        # Expected y values are raw y0 from each clump, in catalog order.
-        expected_ys = [c.y0 for c in clump_list]
-        assert list(centroids["y"]) == expected_ys
+        expected_ys = [(c.y0 - cy) * sec_pix for c in clump_list]
+        for got, exp in zip(centroids["y"], expected_ys, strict=True):
+            assert got == pytest.approx(exp, rel=1e-9, abs=1e-12)
 
     def test_data_order_preserves_clickable_first(self, store: DataStore):
         """app.js relies on data[0] being the click target; centroids are last."""
@@ -247,3 +258,44 @@ class TestBuildRGBFigure:
         fig = self._build(store)
         img = fig["layout"]["images"][0]
         assert img["yanchor"] == "bottom"
+
+    def test_axes_locked_to_image_extent(self, store: DataStore):
+        from jellyscope.data.model.coordinates import (
+            image_axis_bounds,
+            pixel_scale_arcsec,
+        )
+
+        fig = self._build(store)
+        dataset = store.get_dataset(store.list_datasets()[0])
+        datacube = dataset.get_datacube(dataset.list_datacubes()[0])
+        ny, nx = datacube.spatial_shape
+        sec = pixel_scale_arcsec(datacube.wcs) if datacube.wcs.has_celestial else None
+        bounds = image_axis_bounds(nx, ny, sec)
+
+        x = fig["layout"]["xaxis"]
+        y = fig["layout"]["yaxis"]
+        assert x["autorange"] is False
+        assert y["autorange"] is False
+        assert x["range"] == [bounds["x"][0], bounds["x"][1]]
+        assert y["range"] == [bounds["y"][0], bounds["y"][1]]
+        assert x["minallowed"] == bounds["x"][0]
+        assert x["maxallowed"] == bounds["x"][1]
+        assert y["minallowed"] == bounds["y"][0]
+        assert y["maxallowed"] == bounds["y"][1]
+
+    def test_meta_image_bounds_min_span(self, store: DataStore):
+        from jellyscope.data.model.coordinates import (
+            image_axis_bounds,
+            pixel_scale_arcsec,
+        )
+
+        fig = self._build(store)
+        dataset = store.get_dataset(store.list_datasets()[0])
+        datacube = dataset.get_datacube(dataset.list_datacubes()[0])
+        ny, nx = datacube.spatial_shape
+        sec = pixel_scale_arcsec(datacube.wcs) if datacube.wcs.has_celestial else None
+        bounds = image_axis_bounds(nx, ny, sec)
+
+        ib = fig["layout"]["meta"]["imageBounds"]
+        assert ib["x_min_span"] == bounds["x_min_span"]
+        assert ib["y_min_span"] == bounds["y_min_span"]

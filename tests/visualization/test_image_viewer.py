@@ -107,3 +107,63 @@ class TestNormalizeStretchDispatch:
         result_default = _normalize_stretch(data)
         result_log = _normalize_stretch(data, stretch="log")
         assert np.allclose(result_default, result_log, equal_nan=True)
+
+
+class TestViewerLayoutBounds:
+    """Galaxy viewer figure must lock axes to image FOV."""
+
+    def _build(self, store):
+        from jellyscope.visualization.image_viewer import build_viewer_figure
+
+        ds = store.get_dataset(store.list_datasets()[0])
+        dc = ds.get_datacube(ds.list_datacubes()[0])
+        return build_viewer_figure(dc, 0, ds.clumps, []), dc
+
+    def test_xaxis_locked_to_image_extent(self, store):
+        from jellyscope.data.model.coordinates import (
+            image_axis_bounds,
+            pixel_scale_arcsec,
+        )
+
+        fig, dc = self._build(store)
+        ny, nx = dc.spatial_shape
+        sec = pixel_scale_arcsec(dc.wcs) if dc.wcs.has_celestial else None
+        bounds = image_axis_bounds(nx, ny, sec)
+
+        x = fig["layout"]["xaxis"]
+        assert x["autorange"] is False
+        assert x["range"] == [bounds["x"][0], bounds["x"][1]]
+        assert x["minallowed"] == bounds["x"][0]
+        assert x["maxallowed"] == bounds["x"][1]
+
+    def test_yaxis_locked_to_image_extent(self, store):
+        from jellyscope.data.model.coordinates import (
+            image_axis_bounds,
+            pixel_scale_arcsec,
+        )
+
+        fig, dc = self._build(store)
+        ny, nx = dc.spatial_shape
+        sec = pixel_scale_arcsec(dc.wcs) if dc.wcs.has_celestial else None
+        bounds = image_axis_bounds(nx, ny, sec)
+
+        y = fig["layout"]["yaxis"]
+        assert y["autorange"] is False
+        assert y["range"] == [bounds["y"][0], bounds["y"][1]]
+        assert y["minallowed"] == bounds["y"][0]
+        assert y["maxallowed"] == bounds["y"][1]
+
+    def test_meta_image_bounds_min_span(self, store):
+        from jellyscope.data.model.coordinates import (
+            image_axis_bounds,
+            pixel_scale_arcsec,
+        )
+
+        fig, dc = self._build(store)
+        ny, nx = dc.spatial_shape
+        sec = pixel_scale_arcsec(dc.wcs) if dc.wcs.has_celestial else None
+        bounds = image_axis_bounds(nx, ny, sec)
+
+        ib = fig["layout"]["meta"]["imageBounds"]
+        assert ib["x_min_span"] == bounds["x_min_span"]
+        assert ib["y_min_span"] == bounds["y_min_span"]
