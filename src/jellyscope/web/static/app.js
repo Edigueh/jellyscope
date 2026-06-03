@@ -90,6 +90,7 @@ const state = {
     dragmode: "pan",
     clumps: [],
     showCentroids: false,
+    showBoundaries: true,
     viewMode: "single", // "single" or "rgb"
     rgbR: _initialRgb.r,
     rgbG: _initialRgb.g,
@@ -380,6 +381,12 @@ function setupEventListeners() {
         renderViewer();
     });
 
+    document.getElementById("btn-boundaries").addEventListener("click", () => {
+        state.showBoundaries = !state.showBoundaries;
+        document.getElementById("btn-boundaries").classList.toggle("active", state.showBoundaries);
+        renderViewer();
+    });
+
     setupSidebarResizer();
     setupClumpSedResizer();
 }
@@ -547,6 +554,10 @@ async function renderViewer() {
     const fig = data.figure;
 
     fig.layout.dragmode = state.dragmode;
+
+    if (!state.showBoundaries) {
+        fig.data = fig.data.filter((t) => !(t.name && t.name.startsWith("Clump ")));
+    }
 
     if (!state.showCentroids) {
         fig.data.pop();
