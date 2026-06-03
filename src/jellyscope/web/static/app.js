@@ -23,48 +23,60 @@ const RGB_DELTA_GB_FALLBACK = 0.253;
 // by λ-rank against the sublist of indices with a known wavelength: R = argmax(λ),
 // B = argmin(λ), G = argmin |λ − (λ_R + λ_B) / 2|. Falls back to position
 // (length-1, mid, 0) only when fewer than three filters carry a wavelength.
-function resolveRgbDefaults(filterList) {
-    const named = {
-        r: filterList.indexOf(DEFAULT_RGB_FILTERS.r),
-        g: filterList.indexOf(DEFAULT_RGB_FILTERS.g),
-        b: filterList.indexOf(DEFAULT_RGB_FILTERS.b),
+// Lookup index of each named default; require both presence in filterList AND
+// a known wavelength. Returns -1 for unresolved slots.
+function resolveNamedRgb(filterList) {
+    const lookup = (key) => {
+        const i = filterList.indexOf(DEFAULT_RGB_FILTERS[key]);
+        return (i >= 0 && WAVELENGTHS[DEFAULT_RGB_FILTERS[key]] != null) ? i : -1;
     };
-    const result = {
-        r: (named.r >= 0 && WAVELENGTHS[DEFAULT_RGB_FILTERS.r] != null) ? named.r : -1,
-        g: (named.g >= 0 && WAVELENGTHS[DEFAULT_RGB_FILTERS.g] != null) ? named.g : -1,
-        b: (named.b >= 0 && WAVELENGTHS[DEFAULT_RGB_FILTERS.b] != null) ? named.b : -1,
-    };
-    if (result.r >= 0 && result.g >= 0 && result.b >= 0) return result;
+    return {r: lookup("r"), g: lookup("g"), b: lookup("b")};
+}
 
-    // Build the λ-ranked sublist for any slot the named lookup didn't resolve.
+// All filters with a known wavelength, sorted ascending by λ.
+function knownWavelengths(filterList) {
     const known = [];
     filterList.forEach((name, i) => {
         const wl = WAVELENGTHS[name];
         if (wl != null) known.push({i, wl});
     });
-
-    if (known.length < 3) {
-        // Pathological filter set — keep the page loading via position fallback.
-        return {
-            r: result.r >= 0 ? result.r : Math.max(0, filterList.length - 1),
-            g: result.g >= 0 ? result.g : Math.floor(filterList.length / 2),
-            b: result.b >= 0 ? result.b : 0,
-        };
-    }
-
     known.sort((a, b) => a.wl - b.wl);
-    const lo = known[0];
-    const hi = known[known.length - 1];
-    const midWl = (lo.wl + hi.wl) / 2;
-    let midPick = known[0];
-    let midDist = Infinity;
+    return known;
+}
+
+// argmin distance to target.
+function nearestKnownToWl(known, targetWl) {
+    let best = known[0];
+    let bestDist = Infinity;
     for (const k of known) {
-        const d = Math.abs(k.wl - midWl);
-        if (d < midDist) {
-            midDist = d;
-            midPick = k;
+        const d = Math.abs(k.wl - targetWl);
+        if (d < bestDist) {
+            best = k;
+            bestDist = d;
         }
     }
+    return best;
+}
+
+// Position-only fallback when fewer than 3 filters carry a wavelength.
+function positionFallback(result, filterList) {
+    return {
+        r: result.r >= 0 ? result.r : Math.max(0, filterList.length - 1),
+        g: result.g >= 0 ? result.g : Math.floor(filterList.length / 2),
+        b: Math.max(result.b, 0),
+    };
+}
+
+function resolveRgbDefaults(filterList) {
+    const result = resolveNamedRgb(filterList);
+    if (result.r >= 0 && result.g >= 0 && result.b >= 0) return result;
+
+    const known = knownWavelengths(filterList);
+    if (known.length < 3) return positionFallback(result, filterList);
+
+    const lo = known[0];
+    const hi = known.at(-1);
+    const midPick = nearestKnownToWl(known, (lo.wl + hi.wl) / 2);
 
     if (result.r < 0) result.r = hi.i;
     if (result.b < 0) result.b = lo.i;
@@ -99,7 +111,7 @@ const state = {
     // the other two slots to the filters nearest λ_anchor ± these Δs.
     rgbDeltaRG: null,
     rgbDeltaGB: null,
-    rgbQ: 8.0,
+    rgbQ: 8,
     rgbMethod: "percentile_asinh",
 };
 
@@ -296,7 +308,7 @@ function setupEventListeners() {
     });
 
     document.getElementById("filter-slider").addEventListener("input", (e) => {
-        state.channel = parseInt(e.target.value);
+        state.channel = Number.parseInt(e.target.value);
         updateFilterLabel();
         renderViewer();
     });
@@ -325,21 +337,21 @@ function setupEventListeners() {
 
     // RGB filter selectors
     document.getElementById("rgb-r").addEventListener("change", (e) => {
-        state.rgbR = parseInt(e.target.value);
+        state.rgbR = Number.parseInt(e.target.value);
         snapRgbFromAnchor("R");
         syncRgbSelects();
         updateFilterLabel();
         renderViewer();
     });
     document.getElementById("rgb-g").addEventListener("change", (e) => {
-        state.rgbG = parseInt(e.target.value);
+        state.rgbG = Number.parseInt(e.target.value);
         snapRgbFromAnchor("G");
         syncRgbSelects();
         updateFilterLabel();
         renderViewer();
     });
     document.getElementById("rgb-b").addEventListener("change", (e) => {
-        state.rgbB = parseInt(e.target.value);
+        state.rgbB = Number.parseInt(e.target.value);
         snapRgbFromAnchor("B");
         syncRgbSelects();
         updateFilterLabel();
@@ -356,7 +368,7 @@ function setupEventListeners() {
     // Q slider with debounce
     const debouncedRender = debounce(renderViewer, 300);
     document.getElementById("rgb-q").addEventListener("input", (e) => {
-        state.rgbQ = parseFloat(e.target.value);
+        state.rgbQ = Number.parseFloat(e.target.value);
         document.getElementById("rgb-q-label").textContent = state.rgbQ.toFixed(1);
         debouncedRender();
     });
@@ -406,13 +418,13 @@ function setupSidebarResizer() {
         e.preventDefault();
     });
 
-    window.addEventListener("mousemove", (e) => {
+    globalThis.addEventListener("mousemove", (e) => {
         if (!dragging) return;
         const w = Math.max(260, Math.min(900, window.innerWidth - e.clientX));
         document.documentElement.style.setProperty("--sidebar-w", w + "px");
     });
 
-    window.addEventListener("mouseup", () => {
+    globalThis.addEventListener("mouseup", () => {
         if (!dragging) return;
         dragging = false;
         resizer.classList.remove("dragging");
@@ -420,7 +432,7 @@ function setupSidebarResizer() {
         const viewer = document.getElementById("galaxy-viewer");
         const spec = document.getElementById("spectrum-plot");
         if (viewer) Plotly.Plots.resize(viewer);
-        if (spec && spec.data) Plotly.Plots.resize(spec);
+        if (spec?.data) Plotly.Plots.resize(spec);
     });
 }
 
@@ -442,7 +454,7 @@ function setupClumpSedResizer() {
         e.preventDefault();
     });
 
-    window.addEventListener("mousemove", (e) => {
+    globalThis.addEventListener("mousemove", (e) => {
         if (!dragging) return;
         const panelTop = clumpPanel.getBoundingClientRect().top;
         const totalH = rightPanels.getBoundingClientRect().height;
@@ -453,13 +465,13 @@ function setupClumpSedResizer() {
         document.documentElement.style.setProperty("--clump-h", h + "px");
     });
 
-    window.addEventListener("mouseup", () => {
+    globalThis.addEventListener("mouseup", () => {
         if (!dragging) return;
         dragging = false;
         resizer.classList.remove("dragging");
         document.body.style.userSelect = "";
         const spec = document.getElementById("spectrum-plot");
-        if (spec && spec.data) Plotly.Plots.resize(spec);
+        if (spec?.data) Plotly.Plots.resize(spec);
     });
 }
 
@@ -531,7 +543,7 @@ function updateClumpListUI() {
     const clumps = document.querySelectorAll(".clump-item");
     clumps.forEach((clump) => {
         const checkbox = clump.querySelector("input[type=checkbox]");
-        const clumpId = parseInt(clump.querySelector("span").textContent.replace("Clump ", ""));
+        const clumpId = Number.parseInt(clump.querySelector("span").textContent.replace("Clump ", ""));
         const isSelected = state.selectedClumps.has(clumpId);
         clump.classList.toggle("selected", isSelected);
         if (checkbox) checkbox.checked = isSelected;
@@ -556,7 +568,7 @@ async function renderViewer() {
     fig.layout.dragmode = state.dragmode;
 
     if (!state.showBoundaries) {
-        fig.data = fig.data.filter((t) => !(t.name && t.name.startsWith("Clump ")));
+        fig.data = fig.data.filter((t) => !(t.name?.startsWith("Clump ")));
     }
 
     if (!state.showCentroids) {
@@ -583,11 +595,11 @@ async function onViewerClick(eventData) {
     const resp = await fetch(`${dsBase()}/pixel/${x}/${y}/clump`);
     const data = await resp.json();
 
-    if (data.clump_id !== null) {
-        toggleClumpSelection(data.clump_id);
-    } else {
+    if (data.clump_id === null) {
         const myGen = ++spectrumGen;
         showPixelSpectrum(x, y, myGen);
+    } else {
+        toggleClumpSelection(data.clump_id);
     }
 }
 
