@@ -71,6 +71,18 @@ docker-down:
 docker-logs:
     docker compose logs -f jellyscope
 
+# Restart container without rebuild (env/state reset only — does NOT pick up code changes)
+docker-restart:
+    docker compose restart jellyscope
+
+# Rebuild image and recreate container (picks up code changes; uses layer cache)
+docker-reload:
+    docker compose up -d --build
+
+# Start dev container with bind-mounted src and uvicorn --reload (hot reload)
+docker-dev:
+    docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
 # Clean build artifacts
 clean:
     rm -rf .ruff_cache .mypy_cache .pytest_cache htmlcov .coverage dist build *.egg-info
