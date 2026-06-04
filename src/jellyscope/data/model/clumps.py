@@ -161,7 +161,7 @@ class ClumpCatalog:
             return self._boundaries[clump_id]
 
         mask = self._pixels_masks[clump_id]
-        ys, xs = np.where(mask)
+        ys, xs = np.nonzero(mask)
 
         # Handle edge case: small clumps cannot form a hull
         if len(xs) < 3:

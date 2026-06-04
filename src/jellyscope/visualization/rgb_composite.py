@@ -23,7 +23,11 @@ from jellyscope.data.model.coordinates import (
     image_arcsec_extent,
     image_axis_bounds,
     pixel_scale_arcsec,
-    pixel_to_skycoord,
+)
+from jellyscope.visualization._viz_helpers import (
+    RADEC_HOVER_PREFIX,
+    build_dark_axis_layout,
+    build_radec_customdata_grid,
 )
 from jellyscope.visualization.image_viewer import (
     _estimate_background,
@@ -32,12 +36,6 @@ from jellyscope.visualization.image_viewer import (
 )
 
 RGBMethod = Literal["percentile_asinh", "lupton"]
-
-_GRAY: str = "#cccccc"
-_DARK_GRAY: str = "#999"
-_SOFT_BLACK: str = "#333"
-_DARK_BLUE: str = "#1a1a2e"
-_SOFT_DARK_BLUE: str = "#16213e"
 
 
 def lupton_rgb_composite(
@@ -231,41 +229,8 @@ def build_rgb_figure(
     if has_sky and sec_pix is not None:
         click_target["x"] = arcsec_axis(nx, sec_pix).tolist()
         click_target["y"] = arcsec_axis(ny, sec_pix).tolist()
-
-        # Per-cell pixel + RA/Dec for hover.
-        xx_pix, yy_pix = np.meshgrid(
-            np.arange(nx, dtype=np.float64), np.arange(ny, dtype=np.float64)
-        )
-        try:
-            sky = pixel_to_skycoord(xx_pix, yy_pix, datacube.wcs)
-            ra = np.asarray(sky.ra.deg, dtype=np.float64)
-            dec = np.asarray(sky.dec.deg, dtype=np.float64)
-        except Exception:  # pragma: no cover - defensive
-            ra = np.full((ny, nx), np.nan)
-            dec = np.full((ny, nx), np.nan)
-
-        customdata: list[list[list[float | int | None]]] = []
-        for j in range(ny):
-            row_cd: list[list[float | int | None]] = []
-            for i in range(nx):
-                r = ra[j, i]
-                d = dec[j, i]
-                row_cd.append(
-                    [
-                        int(i),
-                        int(j),
-                        float(r) if np.isfinite(r) else None,
-                        float(d) if np.isfinite(d) else None,
-                    ]
-                )
-            customdata.append(row_cd)
-        click_target["customdata"] = customdata
-        click_target["hovertemplate"] = (
-            "pix: (%{customdata[0]:d}, %{customdata[1]:d})<br>"
-            'sky: (%{x:.3f}", %{y:.3f}")<br>'
-            "RA: %{customdata[2]:.6f}°<br>"
-            "Dec: %{customdata[3]:.6f}°<extra></extra>"
-        )
+        click_target["customdata"] = build_radec_customdata_grid(nx, ny, datacube.wcs)
+        click_target["hovertemplate"] = RADEC_HOVER_PREFIX + "<extra></extra>"
     else:
         click_target["hoverinfo"] = "skip"
 
@@ -288,59 +253,26 @@ def build_rgb_figure(
         axis_label_y = "y (pixels)"
 
     bounds = image_axis_bounds(nx, ny, sec_pix)
-    x_min, x_max = bounds["x"]
-    y_min, y_max = bounds["y"]
 
-    layout: dict[str, Any] = {
-        "title": {
-            "text": f"RGB: {r_name} / {g_name} / {b_name}",
-            "font": {"color": _GRAY},
-        },
-        "xaxis": {
-            "title": axis_label_x,
-            "scaleanchor": "y",
-            "constrain": "domain",
-            "gridcolor": _SOFT_BLACK,
-            "color": _DARK_GRAY,
-            "range": [x_min, x_max],
-            "minallowed": x_min,
-            "maxallowed": x_max,
-            "autorange": False,
-        },
-        "yaxis": {
-            "title": axis_label_y,
-            "gridcolor": _SOFT_BLACK,
-            "color": _DARK_GRAY,
-            "range": [y_min, y_max],
-            "minallowed": y_min,
-            "maxallowed": y_max,
-            "autorange": False,
-        },
-        "plot_bgcolor": _DARK_BLUE,
-        "paper_bgcolor": _SOFT_DARK_BLUE,
-        "font": {"color": _GRAY},
-        "margin": {"l": 50, "r": 20, "t": 40, "b": 50},
-        "dragmode": "pan",
-        "meta": {
-            "imageBounds": {
-                "x_min_span": bounds["x_min_span"],
-                "y_min_span": bounds["y_min_span"],
-            }
-        },
-        "images": [
-            {
-                "source": _rgb_to_png_data_url(rgb),
-                "xref": "x",
-                "yref": "y",
-                "x": extent["x"],
-                "y": extent["y"],
-                "yanchor": "bottom",
-                "sizex": extent["sizex"],
-                "sizey": extent["sizey"],
-                "sizing": "stretch",
-                "layer": "below",
-            }
-        ],
-    }
+    layout: dict[str, Any] = build_dark_axis_layout(
+        title_text=f"RGB: {r_name} / {g_name} / {b_name}",
+        axis_label_x=axis_label_x,
+        axis_label_y=axis_label_y,
+        bounds=bounds,
+    )
+    layout["images"] = [
+        {
+            "source": _rgb_to_png_data_url(rgb),
+            "xref": "x",
+            "yref": "y",
+            "x": extent["x"],
+            "y": extent["y"],
+            "yanchor": "bottom",
+            "sizex": extent["sizex"],
+            "sizey": extent["sizey"],
+            "sizing": "stretch",
+            "layer": "below",
+        }
+    ]
 
     return {"data": data, "layout": layout}

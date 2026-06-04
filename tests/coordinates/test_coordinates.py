@@ -156,8 +156,8 @@ def test_image_axis_bounds_pixel_fallback():
     bounds = image_axis_bounds(nx, ny, None)
     assert bounds["x"] == (0.0, float(nx))
     assert bounds["y"] == (0.0, float(ny))
-    assert bounds["x_min_span"] == 5.0
-    assert bounds["y_min_span"] == 5.0
+    assert np.isclose(bounds["x_min_span"], 5.0, rtol=1e-09, atol=1e-09)
+    assert np.isclose(bounds["y_min_span"], 5.0, rtol=1e-09, atol=1e-09)
 
 
 def test_image_axis_bounds_custom_min_span_pixels():

@@ -600,7 +600,7 @@ async function renderViewer() {
 // image's pixel resolution.
 function _readBounds(viewer, axisName) {
     const axis = viewer.layout?.[axisName];
-    if (!axis || !axis.range) return null;
+    if (!axis?.range) return null;
     const {minallowed, maxallowed, range} = axis;
     if (minallowed === undefined || maxallowed === undefined) return null;
     const [r0, r1] = range;
@@ -651,11 +651,8 @@ function _zoomAxis(b, cursor, factor) {
 }
 
 function _cursorOnAxis(axis, pixel, fallback) {
-    try {
-        const v = axis?.p2d?.(pixel);
-        if (typeof v === "number" && Number.isFinite(v)) return v;
-    } catch (_) {}
-    return fallback;
+    const v = axis?.p2d?.(pixel);
+    return (typeof v === "number" && Number.isFinite(v)) ? v : fallback;
 }
 
 function _zoomOnWheel(e) {
@@ -690,8 +687,7 @@ function _zoomOnWheel(e) {
 // double-click). Plotly fires plotly_relayout *after* applying the range; if
 // the new range is below min_span we relayout once more to grow back up to
 // min_span. The __clamping flag prevents feedback loops.
-function _relayoutClampGuard(eventData) {
-    const div = this;
+function _relayoutClampGuard(div, eventData) {
     if (div.__clamping) return;
 
     const xRangeChanged = "xaxis.range" in eventData ||
@@ -724,7 +720,7 @@ function _relayoutClampGuard(eventData) {
 function attachZoomOutLock(viewer) {
     if (viewer.__zoomOutLockAttached) return;
     viewer.addEventListener("wheel", _zoomOnWheel, {capture: true, passive: false});
-    viewer.on("plotly_relayout", _relayoutClampGuard);
+    viewer.on("plotly_relayout", (ed) => _relayoutClampGuard(viewer, ed));
     viewer.__zoomOutLockAttached = true;
 }
 

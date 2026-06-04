@@ -20,14 +20,14 @@ class TestEstimateBackground:
     def test_all_nan_returns_defaults(self):
         data = np.full((10, 10), np.nan)
         median, std = _estimate_background(data)
-        assert median == 0.0
-        assert std == 1.0
+        assert np.isclose(median, 0.0, rtol=1e-09, atol=1e-09)
+        assert np.isclose(std, 1.0, rtol=1e-09, atol=1e-09)
 
     def test_empty_array(self):
         data = np.array([])
         median, std = _estimate_background(data)
-        assert median == 0.0
-        assert std == 1.0
+        assert np.isclose(median, 0.0, rtol=1e-09, atol=1e-09)
+        assert np.isclose(std, 1.0, rtol=1e-09, atol=1e-09)
 
 
 class TestLuptonAsinhStretch:
@@ -50,7 +50,7 @@ class TestLuptonAsinhStretch:
     def test_all_nan_returns_zeros(self):
         data = np.full((10, 10), np.nan)
         result = _lupton_asinh_stretch(data)
-        assert np.all(result == 0.0)
+        assert np.all(np.isclose(result, 0.0, rtol=1e-09, atol=1e-09))
 
     def test_uniform_array(self):
         data = np.full((20, 20), 42.0)
