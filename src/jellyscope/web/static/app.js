@@ -721,7 +721,113 @@ function attachZoomOutLock(viewer) {
     if (viewer.__zoomOutLockAttached) return;
     viewer.addEventListener("wheel", _zoomOnWheel, {capture: true, passive: false});
     viewer.on("plotly_relayout", (ed) => _relayoutClampGuard(viewer, ed));
+    // plotly_relayouting fires every frame during a drag (pan, drag-zoom).
+    // For drag-zoom rectangles it carries xaxis.range and we clamp; for pan
+    // Plotly translates the SVG via CSS transform and never emits range keys
+    // until mouseup, so the custom pan handler below replaces Plotly's pan.
+    viewer.on("plotly_relayouting", (ed) => _relayoutClampGuard(viewer, ed));
+
+    // Custom pan implementation: takes over mouse drag when dragmode is 'pan',
+    // updating xaxis/yaxis range every frame with the FOV clamp applied. This
+    // prevents the visible off-FOV translation that Plotly's built-in pan
+    // produces because it commits range changes only on mouseup.
+    viewer.addEventListener("mousedown", (e) => _panMouseDown(viewer, e), {capture: true});
     viewer.__zoomOutLockAttached = true;
+}
+
+const _panState = {
+    active: false,
+    viewer: null,
+    startX: 0,
+    startY: 0,
+    startXRange: [0, 0],
+    startYRange: [0, 0],
+    plotWidth: 1,
+    plotHeight: 1,
+};
+
+function _panMouseDown(viewer, e) {
+    if (state.dragmode !== "pan") return;
+    if (e.button !== 0) return; // left button only
+
+    const xa = _readBounds(viewer, "xaxis");
+    const ya = _readBounds(viewer, "yaxis");
+    if (!xa || !ya) return;
+
+    const fullXa = viewer._fullLayout?.xaxis;
+    const fullYa = viewer._fullLayout?.yaxis;
+    const w = fullXa?._length;
+    const h = fullYa?._length;
+    if (!w || !h) return;
+
+    // Bail if the click is outside the plot drawing area (modeBar, colorbar,
+    // legend). Use the axis offsets/lengths to define the rect.
+    const rect = viewer.getBoundingClientRect();
+    const px = e.clientX - rect.left;
+    const py = e.clientY - rect.top;
+    const x0 = fullXa._offset;
+    const y0 = fullYa._offset;
+    if (px < x0 || px > x0 + w || py < y0 || py > y0 + h) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    _panState.active = true;
+    _panState.viewer = viewer;
+    _panState.startX = e.clientX;
+    _panState.startY = e.clientY;
+    _panState.startXRange = [xa.lo, xa.hi];
+    _panState.startYRange = [ya.lo, ya.hi];
+    _panState.plotWidth = w;
+    _panState.plotHeight = h;
+
+    window.addEventListener("mousemove", _panMouseMove, {capture: true});
+    window.addEventListener("mouseup", _panMouseUp, {capture: true});
+}
+
+function _panMouseMove(e) {
+    if (!_panState.active) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const viewer = _panState.viewer;
+    const dxPix = e.clientX - _panState.startX;
+    const dyPix = e.clientY - _panState.startY;
+
+    const xSpan = _panState.startXRange[1] - _panState.startXRange[0];
+    const ySpan = _panState.startYRange[1] - _panState.startYRange[0];
+    // Pixel x grows right, data x grows right => drag right shifts view left.
+    // Pixel y grows down, data y grows up   => drag down shifts view up.
+    const dxData = -dxPix * xSpan / _panState.plotWidth;
+    const dyData = +dyPix * ySpan / _panState.plotHeight;
+
+    const xa = _readBounds(viewer, "xaxis");
+    const ya = _readBounds(viewer, "yaxis");
+    if (!xa || !ya) return;
+
+    const newXLo = _panState.startXRange[0] + dxData;
+    const newXHi = _panState.startXRange[1] + dxData;
+    const newYLo = _panState.startYRange[0] + dyData;
+    const newYHi = _panState.startYRange[1] + dyData;
+    const [xLo, xHi] = _clampRange(newXLo, newXHi, xa.min, xa.max, xa.minSpan);
+    const [yLo, yHi] = _clampRange(newYLo, newYHi, ya.min, ya.max, ya.minSpan);
+
+    if (viewer.__clamping) return;
+    viewer.__clamping = true;
+    Plotly.relayout(viewer, {
+        "xaxis.range": [xLo, xHi],
+        "yaxis.range": [yLo, yHi],
+    }).finally(() => {
+        viewer.__clamping = false;
+    });
+}
+
+function _panMouseUp(e) {
+    if (!_panState.active) return;
+    _panState.active = false;
+    _panState.viewer = null;
+    window.removeEventListener("mousemove", _panMouseMove, {capture: true});
+    window.removeEventListener("mouseup", _panMouseUp, {capture: true});
 }
 
 async function onViewerClick(eventData) {
