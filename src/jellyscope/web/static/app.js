@@ -735,8 +735,11 @@ function attachZoomOutLock(viewer) {
     viewer.__zoomOutLockAttached = true;
 }
 
+const _PAN_DRAG_THRESHOLD = 3; // pixels before mousedown is treated as a drag
+
 const _panState = {
     active: false,
+    moved: false,
     viewer: null,
     startX: 0,
     startY: 0,
@@ -744,6 +747,8 @@ const _panState = {
     startYRange: [0, 0],
     plotWidth: 1,
     plotHeight: 1,
+    plotOffsetX: 0,
+    plotOffsetY: 0,
 };
 
 function _panMouseDown(viewer, e) {
@@ -769,10 +774,14 @@ function _panMouseDown(viewer, e) {
     const y0 = fullYa._offset;
     if (px < x0 || px > x0 + w || py < y0 || py > y0 + h) return;
 
+    // Always swallow the mousedown so Plotly's built-in pan does not also
+    // run; we synthesize the click ourselves on mouseup if the user did not
+    // actually drag.
     e.preventDefault();
     e.stopPropagation();
 
     _panState.active = true;
+    _panState.moved = false;
     _panState.viewer = viewer;
     _panState.startX = e.clientX;
     _panState.startY = e.clientY;
@@ -780,19 +789,27 @@ function _panMouseDown(viewer, e) {
     _panState.startYRange = [ya.lo, ya.hi];
     _panState.plotWidth = w;
     _panState.plotHeight = h;
+    _panState.plotOffsetX = x0;
+    _panState.plotOffsetY = y0;
 
-    window.addEventListener("mousemove", _panMouseMove, {capture: true});
-    window.addEventListener("mouseup", _panMouseUp, {capture: true});
+    globalThis.addEventListener("mousemove", _panMouseMove, {capture: true});
+    globalThis.addEventListener("mouseup", _panMouseUp, {capture: true});
 }
 
 function _panMouseMove(e) {
     if (!_panState.active) return;
-    e.preventDefault();
-    e.stopPropagation();
 
     const viewer = _panState.viewer;
     const dxPix = e.clientX - _panState.startX;
     const dyPix = e.clientY - _panState.startY;
+
+    if (!_panState.moved) {
+        if (Math.abs(dxPix) + Math.abs(dyPix) < _PAN_DRAG_THRESHOLD) return;
+        _panState.moved = true;
+    }
+
+    e.preventDefault();
+    e.stopPropagation();
 
     const xSpan = _panState.startXRange[1] - _panState.startXRange[0];
     const ySpan = _panState.startYRange[1] - _panState.startYRange[0];
@@ -822,20 +839,75 @@ function _panMouseMove(e) {
     });
 }
 
-function _panMouseUp(e) {
-    if (!_panState.active) return;
-    _panState.active = false;
-    _panState.viewer = null;
-    window.removeEventListener("mousemove", _panMouseMove, {capture: true});
-    window.removeEventListener("mouseup", _panMouseUp, {capture: true});
+function _nearestIndex(arr, v) {
+    if (!arr || arr.length === 0) return 0;
+    let best = 0;
+    let bestD = Math.abs(arr[0] - v);
+    for (let i = 1; i < arr.length; i++) {
+        const d = Math.abs(arr[i] - v);
+        if (d < bestD) {
+            bestD = d;
+            best = i;
+        }
+    }
+    return best;
 }
 
-async function onViewerClick(eventData) {
-    if (!eventData.points || eventData.points.length == 0) return;
-    const point = eventData.points[0];
-    // Heatmap pointIndex is [row, col] => [y_pix, x_pix]; axes may be arcsec.
-    const [y, x] = point.pointIndex;
+function _synthesizeClick(viewer, clientX, clientY) {
+    const fullXa = viewer._fullLayout?.xaxis;
+    const fullYa = viewer._fullLayout?.yaxis;
+    if (!fullXa?.p2d || !fullYa?.p2d) return;
 
+    const rect = viewer.getBoundingClientRect();
+    const px = clientX - rect.left - _panState.plotOffsetX;
+    const py = clientY - rect.top - _panState.plotOffsetY;
+
+    let xData;
+    let yData;
+    try {
+        xData = fullXa.p2d(px);
+        yData = fullYa.p2d(py);
+    } catch (_) {
+        return;
+    }
+    if (!Number.isFinite(xData) || !Number.isFinite(yData)) return;
+
+    // The first data trace is the heatmap; its x/y arrays carry the (arcsec
+    // or pixel) axis values per cell. Nearest-neighbour gives the integer
+    // pixel index regardless of the axis units.
+    const heatmap = viewer.data?.[0];
+    const xArr = heatmap?.x;
+    const yArr = heatmap?.y;
+    let xPix;
+    let yPix;
+    if (Array.isArray(xArr) && Array.isArray(yArr) && xArr.length && yArr.length) {
+        xPix = _nearestIndex(xArr, xData);
+        yPix = _nearestIndex(yArr, yData);
+    } else {
+        xPix = Math.round(xData);
+        yPix = Math.round(yData);
+    }
+
+    handlePixelClick(xPix, yPix);
+}
+
+function _panMouseUp(e) {
+    if (!_panState.active) return;
+    const viewer = _panState.viewer;
+    const moved = _panState.moved;
+    _panState.active = false;
+    _panState.viewer = null;
+    globalThis.removeEventListener("mousemove", _panMouseMove, {capture: true});
+    globalThis.removeEventListener("mouseup", _panMouseUp, {capture: true});
+
+    if (!moved && viewer) {
+        e.preventDefault();
+        e.stopPropagation();
+        _synthesizeClick(viewer, e.clientX, e.clientY);
+    }
+}
+
+async function handlePixelClick(x, y) {
     // Check if pixel belongs to a clump.
     const resp = await fetch(`${dsBase()}/pixel/${x}/${y}/clump`);
     const data = await resp.json();
@@ -846,6 +918,14 @@ async function onViewerClick(eventData) {
     } else {
         toggleClumpSelection(data.clump_id);
     }
+}
+
+async function onViewerClick(eventData) {
+    if (!eventData.points || eventData.points.length == 0) return;
+    const point = eventData.points[0];
+    // Heatmap pointIndex is [row, col] => [y_pix, x_pix]; axes may be arcsec.
+    const [y, x] = point.pointIndex;
+    await handlePixelClick(x, y);
 }
 
 async function onViewerSelected(eventData) {
