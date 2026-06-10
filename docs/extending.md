@@ -75,10 +75,10 @@ Or add them to `NIRCAM_WAVELENGTHS` in `config.py`.
 
 ### Step 1: Create the module
 
-Create a new file in `src/jellyscope/spec_analysis/`:
+Create a new file in `src/jellyscope/analysis/`:
 
 ```python
-# src/jellyscope/spec_analysis/color_magnitude.py
+# src/jellyscope/analysis/color_magnitude.py
 """Color-magnitude diagram analysis."""
 
 import numpy as np
@@ -159,7 +159,7 @@ def get_color_magnitude(dataset_name: str, datacube_name: str):
     dataset = _dataset(dataset_name)          # Resolve dataset by name (404 if missing)
     dc = dataset.get_datacube(datacube_name)  # Get the datacube on that dataset
 
-    from jellyscope.spec_analysis.color_magnitude import compute_clump_colors
+    from jellyscope.analysis.color_magnitude import compute_clump_colors
     from jellyscope.visualization.color_magnitude_plot import create_cmd_figure
 
     blue = "F150W"
@@ -198,7 +198,7 @@ def your_endpoint(dataset_name: str, datacube_name: str):
     return {"result": ...}                    # Return dict or Pydantic model
 ```
 
-For SED-like routes that should be opt-in, add `_require_sed_enabled(request)` at the top of the handler — it 404s when `JellyscopeConfig.enable_sed = False`.
+For routes that should be opt-in, you can add a config flag plus a small guard helper that 404s when the flag is off — handlers then call the guard at the top.
 
 **Conventions**:
 
@@ -303,18 +303,3 @@ data/
 Each subdirectory is loaded as a `Dataset` named after the directory. The first (alphabetical) becomes `default_dataset`. A flat layout (files directly under `data/`) is loaded as a single dataset called `default` for backward compatibility.
 
 The frontend exposes the active dataset via `DEFAULT_DATASET` (template-injected) and `state.dataset` (JS), so all `/api/datasets/${state.dataset}/...` calls automatically scope to it. To let the user switch galaxies, add a `<select>` populated from `DATASETS` and update `state.dataset` on change before re-rendering.
-
----
-
-## 7. Enabling SED Endpoints
-
-The four spectrum endpoints (`clumps/{id}/spectrum`, `pixel/{x}/{y}/spectrum`, `region/spectrum`, `compare/spectrum`) are gated by `JellyscopeConfig.enable_sed` and return 404 by default. To enable them:
-
-```python
-config = JellyscopeConfig(
-    data_dir=Path("data"),
-    enable_sed=True,
-)
-```
-
-The CLI does not yet expose a `--enable-sed` flag — set it on the config object in code, or wire one up in `cli.py` as a small extension.

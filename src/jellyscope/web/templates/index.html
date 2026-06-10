@@ -120,16 +120,6 @@
                 </h2>
                 <div id="clump-list"></div>
             </section>
-
-            <div id="clump-sed-resizer" title="Drag to resize"></div>
-
-            {% if enable_sed %}
-            <!-- Spectrum -->
-            <section id="spectrum-panel">
-                <h2>Spectral Energy Distribution</h2>
-                <div id="spectrum-plot"></div>
-            </section>
-            {% endif %}
         </aside>
     </main>
 
@@ -139,7 +129,6 @@
         const DEFAULT_DATACUBE = {{ default_datacube | tojson | safe }};
         const FILTERS = {{ filters | tojson | safe }};
         const WAVELENGTHS = {{ wavelengths | tojson | safe }};
-        const FEATURES = { sed: {{ enable_sed | tojson }} };
     </script>
     <script src="static/app.js"></script>
 </body>

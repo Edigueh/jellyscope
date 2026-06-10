@@ -6,7 +6,6 @@ The visualization layer builds Plotly figure dictionaries from data. These dicts
 
 - [visualization/image_viewer.py](../src/jellyscope/visualization/image_viewer.py) — Galaxy heatmap + clump overlays
 - [visualization/rgb_composite.py](../src/jellyscope/visualization/rgb_composite.py) — RGB composite (percentile+asinh and Lupton)
-- [visualization/spectrum_plot.py](../src/jellyscope/visualization/spectrum_plot.py) — SED line plots
 - [visualization/properties_panel.py](../src/jellyscope/visualization/properties_panel.py) — Property formatting
 
 ---
@@ -293,32 +292,5 @@ Assembles the Plotly figure with RGB image + clump overlays.
 4. Boundary and centroid scatter traces use raw FITS pixel coordinates — **no `ny-1-y` transform** at the trace level, and **no `autorange: "reversed"`** on the y-axis.
 
 This replaces the prior `go.Image` approach, which forced `autorange: "reversed"` and required mirrored y-coordinates on every overlay trace. The current scheme keeps overlay code identical between single-band and RGB views.
-
----
-
-## visualization/spectrum_plot.py — SED Plots
-
-**Location**: `src/jellyscope/visualization/spectrum_plot.py`
-
-Builds Plotly line charts for Spectral Energy Distributions (SEDs).
-
-### `create_sed_figure(spectrum, title="Spectral Energy Distribution") -> dict`
-
-Creates a single SED plot with flux vs wavelength. If the spectrum dict contains `std_flux`, a filled ±1σ uncertainty band is added.
-
-**Input `spectrum` dict**:
-
-```python
-{
-    "wavelengths": [0.704, 0.901, ...],   # µm
-    "mean_flux": [1.2e-3, 1.5e-3, ...],   # or "fluxes" for single pixel
-    "std_flux": [2e-4, 3e-4, ...],         # optional
-    "filter_names": ["F070W", "F090W", ...],
-}
-```
-
-### `create_multi_sed_figure(spectra, labels) -> dict`
-
-Overlays multiple SEDs on one plot for comparison. Each SED gets a distinct color from an 8-color palette. Used by the `/api/datasets/{dataset_name}/compare/spectrum/{datacube_name}` endpoint.
 
 ---

@@ -1,6 +1,6 @@
 # Jellyscope Documentation
 
-Jellyscope is an interactive web application for visualizing JWST (James Webb Space Telescope) datacubes of jellyfish galaxies. It allows researchers to explore multi-filter NIRCam images, select regions of galaxies (clumps, tails, disk), and visualize their spectral energy distributions (SEDs) and physical properties.
+Jellyscope is an interactive web application for visualizing JWST (James Webb Space Telescope) datacubes of jellyfish galaxies. It allows researchers to explore multi-filter NIRCam images, select regions of galaxies (clumps, tails, disk), and inspect their physical properties.
 
 ## Technology Stack
 
@@ -10,7 +10,7 @@ Jellyscope is an interactive web application for visualizing JWST (James Webb Sp
 | Numerical | [NumPy](https://numpy.org/), [SciPy](https://scipy.org/) | Array operations, convex hull computation |
 | Tabular data | [Pandas](https://pandas.pydata.org/) | Load CSV clump catalogs |
 | Web framework | [FastAPI](https://fastapi.tiangolo.com/) + [Uvicorn](https://www.uvicorn.org/) | REST API, template rendering, ASGI server |
-| Visualization | [Plotly.js](https://plotly.com/javascript/) | Interactive heatmaps, scatter plots, SED charts |
+| Visualization | [Plotly.js](https://plotly.com/javascript/) | Interactive heatmaps, scatter plots |
 | Validation | [Pydantic](https://docs.pydantic.dev/) | Configuration and response models |
 | Package format | [pyproject.toml](https://pip.pypa.io/en/stable/reference/build-system/pyproject-toml/) | PEP 621 compliant, ready for PyPI |
 
@@ -46,21 +46,15 @@ jellyscope/
 │   ├── model/                          # Response models
 │   │   └── schemas.py                 # Pydantic schemas for API requests/responses
 │   │
-│   ├── spec_analysis/                  # Spectral analysis
-│   │   ├── __init__.py
-│   │   ├── spectral.py                # Pixel/clump/region spectrum extraction
-│   │   └── stats.py                   # Statistical helpers (currently unused)
-│   │
 │   ├── visualization/                  # Plotly figure builders
 │   │   ├── __init__.py
 │   │   ├── image_viewer.py            # Galaxy heatmap + clump overlays + stretch funcs
 │   │   ├── rgb_composite.py           # RGB color composite (percentile_asinh / Lupton)
-│   │   ├── spectrum_plot.py           # SED figure builder (single + multi-overlay)
 │   │   └── properties_panel.py        # Clump property formatting
 │   │
 │   └── web/                            # FastAPI web application
 │       ├── __init__.py                 # App factory (create_app)
-│       ├── routes.py                   # 12 REST API endpoints (some SED-gated)
+│       ├── routes.py                   # REST API endpoints
 │       ├── templates/index.html        # Single-page HTML template
 │       └── static/
 │           ├── app.js                  # Frontend controller (Plotly + fetch)
@@ -86,7 +80,7 @@ jellyscope/
 | [Architecture](architecture.md) | System layers, data flow, interaction diagrams, technical decisions |
 | [Data Layer](data-layer.md) | `config.py`, `data_store.py`, `model/datacube.py`, `model/clumps.py` — all classes and methods |
 | [Visualization](visualization.md) | `image_viewer.py`, `properties_panel.py` — Plotly figure builders |
-| [API Reference](api-reference.md) | All 12 REST endpoints with parameters, responses, and curl examples |
+| [API Reference](api-reference.md) | REST endpoints with parameters, responses, and curl examples |
 | [Frontend](frontend.md) | `index.html`, `app.js`, `style.css` — UI layout, JS controller, Plotly events |
 | [Extending](extending.md) | How to add new datasets, analysis modules, endpoints, and visualizations |
 

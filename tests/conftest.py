@@ -14,7 +14,7 @@ SESSION_SCOPE: str = "session"
 
 @pytest.fixture(scope=SESSION_SCOPE)
 def config() -> JellyscopeConfig:
-    return JellyscopeConfig(data_dir=Path("data"), enable_sed=True)
+    return JellyscopeConfig(data_dir=Path("data"))
 
 
 @pytest.fixture(scope=SESSION_SCOPE)

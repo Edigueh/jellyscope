@@ -14,7 +14,7 @@ Jellyscope follows a layered architecture where each layer only depends on layer
                        │ HTTP (JSON)
 ┌──────────────────────▼──────────────────────────┐
 │             Web Layer (FastAPI)                 │
-│  routes.py — 12 REST endpoints (some SED-gated) │
+│  routes.py — REST endpoints                     │
 │  templates/index.html — SPA page                │
 │  static/app.js — frontend controller            │
 └──────────┬──────────────────────────────────────┘
@@ -23,13 +23,7 @@ Jellyscope follows a layered architecture where each layer only depends on layer
 │  Visualization                                 │
 │  image_viewer.py — heatmap + clump overlays    │
 │  rgb_composite.py — RGB color composite        │
-│  spectrum_plot.py — SED figures                │
 │  properties_panel.py — clump property tables   │
-└──────────┬─────────────────────────────────────┘
-           │
-┌──────────▼─────────────────────────────────────┐
-│  Spectral Analysis (spec_analysis/)            │
-│  spectral.py — pixel/clump/region extraction   │
 └──────────┬─────────────────────────────────────┘
            │
 ┌──────────▼─────────────────────────────────────┐
@@ -246,12 +240,6 @@ Each `Dataset` is a frozen dataclass with:
 
 All API endpoints are namespaced under `/api/datasets/{dataset_name}/...` so multiple datasets can coexist without path collisions. `GET /api/datasets` returns the list and the default.
 
-## SED Gating
-
-Spectrum (SED) endpoints are gated behind a configuration flag. `JellyscopeConfig.enable_sed: bool = False` controls whether the four spectrum routes (`/clumps/{id}/spectrum/...`, `/pixel/{x}/{y}/spectrum/...`, `POST /region/spectrum/...`, `POST /compare/spectrum/...`) are reachable. When `enable_sed=False`, those routes return HTTP 404 via the `_require_sed_enabled()` guard in `routes.py`.
-
-The CLI does not currently expose a flag for this; flip it by constructing `JellyscopeConfig(enable_sed=True)` programmatically (e.g., in a custom entrypoint) or by editing the default in `config.py`.
-
 ## Module Dependency Graph
 
 ```plaintext
@@ -263,17 +251,15 @@ model/clumps.py (imports: pandas, numpy, scipy, pydantic)
     ↑
 data_store.py (imports: config, model/datacube, model/clumps)
     ↑
-    ├── model/schemas.py (imports: pydantic — 15 request/response models)
-    ├── spec_analysis/spectral.py (imports: numpy, model/datacube, model/clumps)
+    ├── model/schemas.py (imports: pydantic — request/response models)
     ├── visualization/image_viewer.py (imports: data_store/DataCube, model/clumps)
     ├── visualization/rgb_composite.py (imports: numpy, PIL, data_store/DataCube,
     │                                            model/clumps, image_viewer helpers)
-    ├── visualization/spectrum_plot.py (imports: numpy, config wavelengths)
     ├── visualization/properties_panel.py (imports: model/clumps)
     │       ↑
-    └── web/routes.py (imports: data_store, model/schemas, spec_analysis/spectral,
+    └── web/routes.py (imports: data_store, model/schemas,
                                 visualization/image_viewer, rgb_composite,
-                                spectrum_plot, properties_panel)
+                                properties_panel)
             ↑
         web/__init__.py (imports: config, data_store, routes)
             ↑

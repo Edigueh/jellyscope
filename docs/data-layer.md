@@ -9,8 +9,6 @@ The data layer is the foundation of Jellyscope. It handles loading FITS datacube
 - [data/model/datacube.py](../src/jellyscope/data/model/datacube.py) — FITS datacube I/O
 - [data/model/clumps.py](../src/jellyscope/data/model/clumps.py) — Clump catalog management
 - [model/schemas.py](../src/jellyscope/model/schemas.py) — Pydantic API request/response models
-- [spec_analysis/spectral.py](../src/jellyscope/spec_analysis/spectral.py) — Pixel/clump/region spectrum extraction
-- [spec_analysis/stats.py](../src/jellyscope/spec_analysis/stats.py) — Statistical helpers (currently unused)
 
 ---
 
@@ -60,7 +58,6 @@ class JellyscopeConfig(BaseModel):
     debug: bool                  # Debug mode (default: True)
     default_colorscale: str      # Plotly colorscale name (default: "Viridis")
     filter_wavelengths: dict[str, float]  # Filter → wavelength mapping (default: NIRCAM_WAVELENGTHS)
-    enable_sed: bool             # Gate spectrum endpoints (default: False — SED routes return 404)
 ```
 
 **Usage**:
@@ -151,11 +148,11 @@ image = dc.get_slice_by_name("F200W")
 
 #### `get_spectrum_at_pixel(x: int, y: int) -> np.ndarray`
 
-Returns a 1D array of length `n_channels` — the flux values at pixel `(x, y)` across all filters. This is the Spectral Energy Distribution (SED) of that pixel.
+Returns a 1D array of length `n_channels` — the flux values at pixel `(x, y)` across all filters.
 
 ```python
-sed = dc.get_spectrum_at_pixel(80, 100)
-print(sed.shape)  # (20,)
+spec = dc.get_spectrum_at_pixel(80, 100)
+print(spec.shape)  # (20,)
 ```
 
 **Note**: Array indexing is `data[:, y, x]` (FITS convention: axis 0 = channel, axis 1 = y, axis 2 = x).
@@ -426,15 +423,7 @@ DataStore.reset()  # Next get() will create a fresh instance
 
 **Location**: `src/jellyscope/model/schemas.py`
 
-15 Pydantic models defining the request and response shapes for the REST API. Imported by `web/routes.py` to type request bodies and serialize responses.
-
-**Request models**:
-
-| Model | Used by | Purpose |
-| ------- | --------- | --------- |
-| `RectSelection` | `RegionRequest` | Rectangular region with `x0`, `y0`, `x1`, `y1` (pixel coords) |
-| `RegionRequest` | `POST /region/spectrum/...` | Either an explicit pixel list or a `RectSelection` |
-| `CompareRequest` | `POST /compare/spectrum/...` | List of `clump_ids` to overlay on one SED figure |
+Pydantic models defining the response shapes for the REST API. Imported by `web/routes.py` to serialize responses.
 
 **Response models**:
 
@@ -450,36 +439,3 @@ DataStore.reset()  # Next get() will create a fresh instance
 | `ClumpsListResponse` | `GET /datasets/.../clumps` | List of `ClumpListItem` |
 | `ClumpDetailResponse` | `GET /datasets/.../clumps/{id}` | `properties` dict + `boundary` polygon |
 | `PixelClumpResponse` | `GET /datasets/.../pixel/{x}/{y}/clump` | `clump_id` (int or `None`) |
-| `SpectrumResponse` | Pixel/clump/region SED endpoints | `spectrum` dict + Plotly `figure` |
-| `CompareResponse` | `POST /datasets/.../compare/spectrum/...` | Plotly `figure` + per-clump `spectra` list |
-
----
-
-## spec_analysis/ — Spectral extraction
-
-**Location**: `src/jellyscope/spec_analysis/`
-
-Helper functions that convert a `DataCube` + selection (pixel, clump, or arbitrary mask) into a wavelength-vs-flux dict. Called from `web/routes.py` to serve the SED-gated spectrum endpoints.
-
-### `spectral.py`
-
-#### `extract_pixel_spectrum(datacube: DataCube, x: int, y: int) -> dict`
-
-Returns the SED at one pixel.
-
-```python
-spec = extract_pixel_spectrum(dc, 80, 100)
-# {"wavelengths": [...], "fluxes": [...], "filter_names": [...]}
-```
-
-#### `extract_clump_spectrum(datacube: DataCube, clumps: ClumpCatalog, clump_id: int) -> dict`
-
-Returns the mean SED across all pixels in a clump (also includes per-channel `std`).
-
-#### `extract_region_spectrum(datacube: DataCube, mask: np.ndarray) -> dict`
-
-Returns the mean SED across all `True` pixels in a boolean mask. Used for `POST /region/spectrum/...`.
-
-### `stats.py`
-
-Module exists but is currently unused by the rest of the codebase. Reserved for future statistical helpers.

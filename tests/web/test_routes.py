@@ -143,39 +143,6 @@ def test_viewer_invalid_channel_index(client):
     assert resp.status_code == HTTPStatus.BAD_REQUEST
 
 
-def test_clump_spectrum(client):
-    resp = client.get(f"{BASE}/clumps/0/spectrum/nircam")
-    data = resp.json()
-    assert "spectrum" in data
-    assert "figure" in data
-    assert len(data["spectrum"]["mean_flux"]) == 20
-
-
-def test_pixel_spectrum(client):
-    resp = client.get(f"{BASE}/pixel/80/100/spectrum/nircam")
-    data = resp.json()
-    assert len(data["spectrum"]["fluxes"]) == 20
-
-
-def test_region_spectrum(client):
-    resp = client.post(
-        f"{BASE}/region/spectrum/nircam",
-        json={"rect": {"x0": 70, "y0": 15, "x1": 80, "y1": 25}},
-    )
-    data = resp.json()
-    assert data["spectrum"]["n_pixels"] > 0
-
-
-def test_compare_spectra(client):
-    resp = client.post(
-        f"{BASE}/compare/spectrum/nircam",
-        json={"clump_ids": [0, 1, 3]},
-    )
-    data = resp.json()
-    assert len(data["spectra"]) == 3
-    assert len(data["figure"]["data"]) == 3
-
-
 def test_clump_separations(client):
     resp = client.get(f"{BASE}/clumps/separations")
     assert resp.status_code == HTTPStatus.OK

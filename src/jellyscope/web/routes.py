@@ -15,27 +15,17 @@ from jellyscope.model.schemas import (
     ClumpSeparation,
     ClumpSeparationsResponse,
     ClumpsListResponse,
-    CompareRequest,
-    CompareResponse,
     DatacubesResponse,
     DatasetsResponse,
     FilterInfo,
     FiltersResponse,
     PixelClumpResponse,
-    RegionRequest,
     RGBViewerResponse,
-    SpectrumResponse,
     ViewerResponse,
-)
-from jellyscope.spec_analysis.spectral import (
-    extract_clump_spectrum,
-    extract_pixel_spectrum,
-    extract_region_spectrum,
 )
 from jellyscope.visualization.image_viewer import build_viewer_figure
 from jellyscope.visualization.properties_panel import format_clump_properties
 from jellyscope.visualization.rgb_composite import build_rgb_figure
-from jellyscope.visualization.spectrum_plot import create_multi_sed_figure, create_sed_figure
 
 router = APIRouter()
 
@@ -49,11 +39,6 @@ def _dataset(name: str) -> Dataset:
         return _store().get_dataset(name)
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
-
-
-def _require_sed_enabled(request: Request) -> None:
-    if not request.app.state.config.enable_sed:
-        raise HTTPException(status_code=404, detail="SED disabled")
 
 
 # Pages.
@@ -74,7 +59,6 @@ def index(request: Request) -> Response:
             "datacubes": default_ds.list_datacubes(),
             "filters": default_ds.get_datacube(default_datacube).filter_names,
             "wavelengths": NIRCAM_WAVELENGTHS,
-            "enable_sed": request.app.state.config.enable_sed,
         },
     )
 
@@ -265,22 +249,6 @@ def get_clump(dataset_name: str, clump_id: int) -> ClumpDetailResponse:
     )
 
 
-@router.get(
-    "/api/datasets/{dataset_name}/clumps/{clump_id}/spectrum/{datacube_name}",
-    response_model=SpectrumResponse,
-)
-def get_clump_spectrum(
-    dataset_name: str, clump_id: int, datacube_name: str, request: Request
-) -> SpectrumResponse:
-    _require_sed_enabled(request)
-    ds = _dataset(dataset_name)
-    dc = ds.get_datacube(datacube_name)
-    assert ds.clumps is not None
-    spectrum = extract_clump_spectrum(dc, ds.clumps, clump_id)
-    figure = create_sed_figure(spectrum)
-    return SpectrumResponse(spectrum=spectrum, figure=figure)
-
-
 # Pixel Interaction.
 @router.get("/api/datasets/{dataset_name}/pixel/{x}/{y}/clump", response_model=PixelClumpResponse)
 def get_pixel_clump(dataset_name: str, x: int, y: int) -> PixelClumpResponse:
@@ -288,75 +256,3 @@ def get_pixel_clump(dataset_name: str, x: int, y: int) -> PixelClumpResponse:
     assert ds.clumps is not None
     cid = ds.clumps.get_clump_id_at_pixel(x, y)
     return PixelClumpResponse(clump_id=cid)
-
-
-@router.get(
-    "/api/datasets/{dataset_name}/pixel/{x}/{y}/spectrum/{datacube_name}",
-    response_model=SpectrumResponse,
-)
-def get_pixel_spectrum(
-    dataset_name: str, x: int, y: int, datacube_name: str, request: Request
-) -> SpectrumResponse:
-    _require_sed_enabled(request)
-    ds = _dataset(dataset_name)
-    dc = ds.get_datacube(datacube_name)
-    spectrum = extract_pixel_spectrum(dc, x, y)
-    figure = create_sed_figure(spectrum)
-    return SpectrumResponse(spectrum=spectrum, figure=figure)
-
-
-# Region selection.
-@router.post(
-    "/api/datasets/{dataset_name}/region/spectrum/{datacube_name}",
-    response_model=SpectrumResponse,
-)
-def get_region_spectrum(
-    dataset_name: str, datacube_name: str, body: RegionRequest, request: Request
-) -> SpectrumResponse:
-    _require_sed_enabled(request)
-    ds = _dataset(dataset_name)
-    dc = ds.get_datacube(datacube_name)
-
-    mask = np.zeros(dc.spatial_shape, dtype=bool)
-
-    if body.pixels is not None:
-        for px in body.pixels:
-            x, y = int(px[0]), int(px[1])
-            if 0 <= y < dc.ny and 0 <= x < dc.nx:
-                mask[y, x] = True
-    elif body.rect is not None:
-        r = body.rect
-        x0, y0 = int(r.x0), int(r.y0)
-        x1, y1 = int(r.x1), int(r.y1)
-        x0, x1 = max(0, min(x0, x1)), min(dc.nx, max(x0, x1))
-        y0, y1 = max(0, min(y0, y1)), min(dc.ny, max(y0, y1))
-        mask[y0:y1, x0:x1] = True
-
-    spectrum = extract_region_spectrum(dc, mask)
-    figure = create_sed_figure(spectrum)
-    return SpectrumResponse(spectrum=spectrum, figure=figure)
-
-
-# Multi-clump comparison.
-@router.post(
-    "/api/datasets/{dataset_name}/compare/spectrum/{datacube_name}",
-    response_model=CompareResponse,
-)
-def compare_spectra(
-    dataset_name: str, datacube_name: str, body: CompareRequest, request: Request
-) -> CompareResponse:
-    _require_sed_enabled(request)
-    ds = _dataset(dataset_name)
-    dc = ds.get_datacube(datacube_name)
-    assert ds.clumps is not None
-
-    spectra = []
-    labels = []
-    for cid in body.clump_ids:
-        spec = extract_clump_spectrum(dc, ds.clumps, cid)
-        spectra.append(spec)
-        c = ds.clumps.get_clump_by_id(cid)
-        labels.append(f"Clump {cid} ({c.component})")
-
-    figure = create_multi_sed_figure(spectra, labels)
-    return CompareResponse(figure=figure, spectra=spectra)

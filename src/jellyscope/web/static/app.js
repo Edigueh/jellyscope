@@ -189,12 +189,6 @@ const plotlyConfig = {
     scrollZoom: false,
 };
 
-// Generation token: every time the selection changes, we bump this and
-// pass the snapshot into spectrum-rendering helpers. If a stale async
-// callback resolves after a newer selection, it bails out instead of
-// clobbering the fresh render.
-let spectrumGen = 0;
-
 // Initialization.
 
 async function init() {
@@ -400,12 +394,11 @@ function setupEventListeners() {
     });
 
     setupSidebarResizer();
-    setupClumpSedResizer();
 }
 
 // Draggable handle between viewer and right panels. Updates the --sidebar-w
 // CSS var; clamps within sane bounds; nudges Plotly to reflow on release so
-// the heatmap and SED both pick up the new column widths.
+// the heatmap picks up the new column width.
 function setupSidebarResizer() {
     const resizer = document.getElementById("sidebar-resizer");
     if (!resizer) return;
@@ -430,48 +423,7 @@ function setupSidebarResizer() {
         resizer.classList.remove("dragging");
         document.body.style.userSelect = "";
         const viewer = document.getElementById("galaxy-viewer");
-        const spec = document.getElementById("spectrum-plot");
         if (viewer) Plotly.Plots.resize(viewer);
-        if (spec?.data) Plotly.Plots.resize(spec);
-    });
-}
-
-// Vertical resizer between Clumps and SED panels. Updates --clump-h on the
-// document root; clamps to sane bounds; nudges Plotly to reflow on release.
-function setupClumpSedResizer() {
-    const resizer = document.getElementById("clump-sed-resizer");
-    if (!resizer) return;
-    const rightPanels = document.getElementById("right-panels");
-    const clumpPanel = document.getElementById("clump-list-panel");
-    if (!rightPanels || !clumpPanel) return;
-    const hasSed = !!document.getElementById("spectrum-panel");
-    let dragging = false;
-
-    resizer.addEventListener("mousedown", (e) => {
-        dragging = true;
-        resizer.classList.add("dragging");
-        document.body.style.userSelect = "none";
-        e.preventDefault();
-    });
-
-    globalThis.addEventListener("mousemove", (e) => {
-        if (!dragging) return;
-        const panelTop = clumpPanel.getBoundingClientRect().top;
-        const totalH = rightPanels.getBoundingClientRect().height;
-        // When SED is present, reserve ~280px for it (240px min-height + header).
-        // When absent, the Clumps panel can grow to fill the column.
-        const maxH = hasSed ? Math.max(60, totalH - 280) : Math.max(60, totalH - 20);
-        const h = Math.max(60, Math.min(maxH, e.clientY - panelTop));
-        document.documentElement.style.setProperty("--clump-h", h + "px");
-    });
-
-    globalThis.addEventListener("mouseup", () => {
-        if (!dragging) return;
-        dragging = false;
-        resizer.classList.remove("dragging");
-        document.body.style.userSelect = "";
-        const spec = document.getElementById("spectrum-plot");
-        if (spec?.data) Plotly.Plots.resize(spec);
     });
 }
 
@@ -581,8 +533,6 @@ async function renderViewer() {
     // Attach click handler
     viewer.removeAllListeners?.("plotly_click");
     viewer.on("plotly_click", onViewerClick);
-    viewer.removeAllListeners?.("plotly_selected");
-    viewer.on("plotly_selected", onViewerSelected);
 
     attachZoomOutLock(viewer);
 }
@@ -913,8 +863,7 @@ async function handlePixelClick(x, y) {
     const data = await resp.json();
 
     if (data.clump_id === null) {
-        const myGen = ++spectrumGen;
-        showPixelSpectrum(x, y, myGen);
+        showPropertiesMessage(`Pixel (${x}, ${y}) — no clump`);
     } else {
         toggleClumpSelection(data.clump_id);
     }
@@ -928,29 +877,6 @@ async function onViewerClick(eventData) {
     await handlePixelClick(x, y);
 }
 
-async function onViewerSelected(eventData) {
-    if (!eventData.points || eventData.points.length == 0) return;
-
-    const pixels = eventData.points
-        .filter((p) => p.curveNumber == 0) // Only heatmap points.
-        .map((p) => [p.pointIndex[1], p.pointIndex[0]]);
-
-    if (pixels.length === 0) return;
-
-    const myGen = ++spectrumGen;
-    const resp = await fetch(`${dsBase()}/region/spectrum/${state.datacube}`, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({pixels}),
-    });
-    if (myGen !== spectrumGen) return;
-    const data = await resp.json();
-
-    await renderSpectrum(data.figure, myGen);
-
-    showPropertiesMessage(`Selected region: ${data.spectrum.n_pixels} pixels`);
-}
-
 // Clump selection.
 async function toggleClumpSelection(clumpId) {
     if (state.selectedClumps.has(clumpId)) {
@@ -960,7 +886,6 @@ async function toggleClumpSelection(clumpId) {
     }
 
     updateClumpListUI();
-    const myGen = ++spectrumGen;
     renderViewer(); // viewer overlay update — fire-and-forget is fine
 
     const selected = Array.from(state.selectedClumps);
@@ -968,35 +893,17 @@ async function toggleClumpSelection(clumpId) {
         if (selected.length === 0) {
             clearPanels();
         } else if (selected.length === 1) {
-            await showClumpDetails(selected[0], myGen);
+            await showClumpDetails(selected[0]);
         } else {
-            await showMultiClumpComparison(selected, myGen);
+            showPropertiesMessage(`Selected ${selected.length} clumps: ${selected.join(", ")}`);
         }
     } catch (e) {
-        if (myGen === spectrumGen) console.error(e);
+        console.error(e);
     }
 }
 
-// Render the SED figure into the spectrum panel. We always do react+resize
-// so the plot fills the flex container even when its trace count changes
-// between calls (1 clump → N clumps could otherwise leave Plotly with a
-// stale layout width from the previous render). If a gen token is supplied
-// and it's stale, bail without touching the DOM — a newer render is in flight.
-async function renderSpectrum(figure, gen) {
-    if (gen !== undefined && gen !== spectrumGen) return;
-    const plot = document.getElementById("spectrum-plot");
-    await Plotly.react(plot, figure.data, figure.layout, plotlyConfig);
-    Plotly.Plots.resize(plot);
-}
-
-async function showClumpDetails(clumpId, gen) {
-    const [propsResp, specResp] = await Promise.all([
-        fetch(`${dsBase()}/clumps/${clumpId}`),
-        fetch(`${dsBase()}/clumps/${clumpId}/spectrum/${state.datacube}`),
-    ]);
-
-    if (gen !== undefined && gen !== spectrumGen) return;
-
+async function showClumpDetails(clumpId) {
+    const propsResp = await fetch(`${dsBase()}/clumps/${clumpId}`);
     const propsData = await propsResp.json();
     const props = propsData.properties;
     let html = '<table class="prop-table">';
@@ -1005,33 +912,6 @@ async function showClumpDetails(clumpId, gen) {
     }
     html += "</table>";
     document.getElementById("properties-content").innerHTML = html;
-
-    const specData = await specResp.json();
-    await renderSpectrum(specData.figure, gen);
-}
-
-async function showMultiClumpComparison(clumpIds, gen) {
-    const resp = await fetch(`${dsBase()}/compare/spectrum/${state.datacube}`, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({clump_ids: clumpIds}),
-    });
-    if (!resp.ok) {
-        console.error("compare/spectrum failed:", resp.status, await resp.text());
-        return;
-    }
-    if (gen !== undefined && gen !== spectrumGen) return;
-    const data = await resp.json();
-    await renderSpectrum(data.figure, gen);
-    showPropertiesMessage(`Comparing ${clumpIds.length} clumps: ${clumpIds.join(", ")}`);
-}
-
-async function showPixelSpectrum(x, y, gen) {
-    const resp = await fetch(`${dsBase()}/pixel/${x}/${y}/spectrum/${state.datacube}`);
-    if (gen !== undefined && gen !== spectrumGen) return;
-    const data = await resp.json();
-    await renderSpectrum(data.figure, gen);
-    showPropertiesMessage(`Pixel (${x}, ${y}) — no clump`);
 }
 
 function showPropertiesMessage(msg) {
@@ -1039,13 +919,9 @@ function showPropertiesMessage(msg) {
         `<p style="color: var(--accent); font-size: 12px;">${msg}</p>`;
 }
 
-// Helpers. Purge (not react with empty data) so Plotly drops its internal
-// layout cache — otherwise the next render reuses stale dimensions and can
-// land as a zero-height plot.
 function clearPanels() {
     document.getElementById("properties-content").innerHTML =
         '<p class="placeholder">Click on a clump to see its properties</p>';
-    Plotly.purge(document.getElementById("spectrum-plot"));
 }
 
 // Start

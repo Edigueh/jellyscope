@@ -22,9 +22,8 @@ This is a Jinja2 template rendered by FastAPI (via `Jinja2Templates`). It receiv
 - `datacubes`: list of available datacube names for the default dataset (e.g., `["nircam", "nircam_matched"]`)
 - `filters`: list of filter names for the default datacube (e.g., `["F070W", "F090W", ...]`)
 - `wavelengths`: dict mapping filter names to central wavelengths in µm
-- `enable_sed`: bool — controls whether SED panels/buttons render (mirrors `JellyscopeConfig.enable_sed`)
 
-These are exposed to JavaScript as `DATASETS`, `DEFAULT_DATASET`, `DEFAULT_DATACUBE`, `FILTERS`, `WAVELENGTHS`, and `FEATURES.sed` constants.
+These are exposed to JavaScript as `DATASETS`, `DEFAULT_DATASET`, `DEFAULT_DATACUBE`, `FILTERS`, and `WAVELENGTHS` constants.
 
 ### Layout
 
@@ -96,8 +95,6 @@ Right column: `360px` fixed — the panels stack vertically.
     // → ["F070W", "F090W", ..., "F480M"]
     const WAVELENGTHS = {{ wavelengths | tojson }};
     // → {"F070W": 0.704, "F090W": 0.901, ...}
-    const FEATURES = {sed: {{ enable_sed | tojson }}};
-    // → {sed: false} when JellyscopeConfig.enable_sed = False
 </script>
 ```
 
@@ -159,7 +156,7 @@ DOMContentLoaded
             └── clump-filter       → onChange → loadClumpList()
 ```
 
-All API URLs are namespaced under `/api/datasets/${state.dataset}/`. The active dataset is read from the template-injected `DEFAULT_DATASET` constant at startup. SED-related fetches (clump/pixel/region/compare spectrum) are gated by `FEATURES.sed` — when `enable_sed=False`, the spectrum endpoints return 404 and the corresponding panels are not populated.
+All API URLs are namespaced under `/api/datasets/${state.dataset}/`. The active dataset is read from the template-injected `DEFAULT_DATASET` constant at startup.
 
 ### Function Reference
 
@@ -233,47 +230,25 @@ Handles clicks on the galaxy image:
 1. Extract `(x, y)` pixel coordinates from the clicked point
 2. `GET /api/datasets/{state.dataset}/pixel/{x}/{y}/clump` — check if pixel belongs to a clump
 3. If clump found → `toggleClumpSelection(clumpId)`
-4. If no clump and `FEATURES.sed` → `showPixelSpectrum(x, y)`
-
-#### `onViewerSelected(eventData)`
-
-Handles Plotly lasso/rectangle selection events:
-
-1. Extract pixel coordinates from all selected points
-2. Filter to only heatmap points (`curveNumber === 0`)
-3. `POST /api/datasets/{state.dataset}/region/spectrum/{datacube}` with pixel list (skipped when `FEATURES.sed` is false)
-4. Render the returned SED figure in the spectrum panel
+4. If no clump → show a "no clump at this pixel" status message
 
 #### `toggleClumpSelection(clumpId)`
 
 Toggles a clump in/out of `state.selectedClumps`:
 
 - **0 selected**: clear all panels
-- **1 selected**: show that clump's properties + SED
-- **2+ selected**: show multi-clump SED comparison
+- **1 selected**: show that clump's properties
+- **2+ selected**: show a status message listing the selected clump IDs
 
 Also calls `renderViewer()` to update boundary highlighting (selected = red).
 
 #### `showClumpDetails(clumpId)`
 
-Fetches properties and spectrum for a single clump in parallel:
+Fetches properties for a single clump and renders the HTML table in the properties panel:
 
 ```javascript
-const [propsResp, specResp] = await Promise.all([
-    fetch(`/api/datasets/${state.dataset}/clumps/${clumpId}`),
-    fetch(`/api/datasets/${state.dataset}/clumps/${clumpId}/spectrum/${state.datacube}`),
-]);
+const propsResp = await fetch(`/api/datasets/${state.dataset}/clumps/${clumpId}`);
 ```
-
-Updates both the properties panel (HTML table) and spectrum plot (Plotly figure). When `FEATURES.sed` is false the spectrum fetch is skipped (the endpoint would return 404).
-
-#### `showMultiClumpComparison(clumpIds)`
-
-Sends clump IDs to the comparison endpoint and renders the overlaid SED figure.
-
-#### `showPixelSpectrum(x, y)`
-
-Fetches and displays the SED for a single pixel (when clicked outside any clump).
 
 #### `loadClumpList()`
 
@@ -303,14 +278,13 @@ Updates checkbox states and selected styling without re-rendering the entire lis
 
 #### `showPropertiesMessage(msg)` / `clearPanels()`
 
-Helper functions for updating/clearing the properties and spectrum panels.
+Helper functions for updating/clearing the properties panel.
 
 ### Plotly Events Used
 
 | Event | When | Action |
 | ------- | ------ | -------- |
-| `plotly_click` | User clicks on the heatmap | Identify clump or show pixel spectrum |
-| `plotly_selected` | User finishes lasso/rectangle | Extract region spectrum |
+| `plotly_click` | User clicks on the heatmap | Identify clump under the cursor |
 
 ### Plotly Configuration
 
