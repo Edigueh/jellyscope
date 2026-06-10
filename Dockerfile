@@ -1,4 +1,3 @@
-# ---- Builder stage ----------------------------------------------------------
 FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim AS builder
 
 ENV UV_COMPILE_BYTECODE=1 \
@@ -7,17 +6,14 @@ ENV UV_COMPILE_BYTECODE=1 \
 
 WORKDIR /app
 
-# Install dependencies first (cacheable layer that does not include source).
 COPY pyproject.toml uv.lock README.md ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-install-project --no-dev
 
-# Install the project itself.
 COPY src ./src
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
-# ---- Runtime stage ----------------------------------------------------------
 FROM python:3.13-slim AS runtime
 
 ENV PYTHONUNBUFFERED=1 \
@@ -25,7 +21,6 @@ ENV PYTHONUNBUFFERED=1 \
     PATH="/app/.venv/bin:$PATH" \
     HF_HOME=/home/jellyscope/.cache/huggingface
 
-# Non-root user
 RUN groupadd --system --gid 1000 jellyscope \
     && useradd --system --uid 1000 --gid jellyscope --create-home --shell /usr/sbin/nologin jellyscope
 
@@ -34,7 +29,6 @@ WORKDIR /app
 COPY --from=builder --chown=jellyscope:jellyscope /app/.venv /app/.venv
 COPY --from=builder --chown=jellyscope:jellyscope /app/src /app/src
 
-# Writable data dir for hosts (e.g. Hugging Face Spaces) that do not mount a volume.
 RUN mkdir -p /data && chown -R jellyscope:jellyscope /data
 
 USER jellyscope
