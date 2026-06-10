@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from jellyscope._bootstrap import ensure_data
 from jellyscope.config import JellyscopeConfig
 from jellyscope.data.data_store import DataStore
 
@@ -33,6 +34,7 @@ def create_app(config: JellyscopeConfig | None = None) -> FastAPI:
     app.state.config = config
 
     # Pre-load data into memory.
+    ensure_data(config.data_dir)
     DataStore.get(config)
 
     static_dir = Path(__file__).parent / "static"

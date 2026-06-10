@@ -1,8 +1,20 @@
+---
+title: Jellyscope
+emoji: 🔭
+colorFrom: indigo
+colorTo: pink
+sdk: docker
+app_port: 5000
+pinned: false
+---
+
 # Jellyscope
 
 Interactive web application for visualizing JWST jellyfish galaxy datacubes.
 
 Jellyscope lets you explore multi-filter NIRCam datacubes, select regions of galaxies (clumps, tails, disk), and visualize their spectral energy distributions (SEDs) and physical properties.
+
+**Live demo:** <https://huggingface.co/spaces/EAT-Prototypes/jellyscope>
 
 ## Requirements
 

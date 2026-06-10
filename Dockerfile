@@ -22,7 +22,8 @@ FROM python:3.13-slim AS runtime
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PATH="/app/.venv/bin:$PATH"
+    PATH="/app/.venv/bin:$PATH" \
+    HF_HOME=/home/jellyscope/.cache/huggingface
 
 # Non-root user
 RUN groupadd --system --gid 1000 jellyscope \
@@ -32,6 +33,9 @@ WORKDIR /app
 
 COPY --from=builder --chown=jellyscope:jellyscope /app/.venv /app/.venv
 COPY --from=builder --chown=jellyscope:jellyscope /app/src /app/src
+
+# Writable data dir for hosts (e.g. Hugging Face Spaces) that do not mount a volume.
+RUN mkdir -p /data && chown -R jellyscope:jellyscope /data
 
 USER jellyscope
 

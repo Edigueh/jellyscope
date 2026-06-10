@@ -23,6 +23,7 @@ dependencies = [
     "plotly>=5.18",
     "scipy>=1.12",
     "pillow>=10.0",
+    "huggingface_hub>=0.30",
 ]
 
 [project.optional-dependencies]
@@ -126,6 +127,8 @@ module = [
     "plotly.*",
     "scipy.*",
     "uvicorn",
+    "huggingface_hub",
+    "huggingface_hub.*",
 ]
 ignore_missing_imports = true
 
