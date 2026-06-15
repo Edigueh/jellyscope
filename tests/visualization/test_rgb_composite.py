@@ -169,7 +169,8 @@ class TestBuildRGBFigure:
         dataset = store.get_dataset(dataset_name)
         datacube_name = dataset.list_datacubes()[0]
         datacube = dataset.get_datacube(datacube_name)
-        clumps = store.get_clumps(dataset_name)
+        clumps = dataset.clumps
+        assert clumps is not None
         nchan = datacube.n_channels
         return build_rgb_figure(
             datacube,
@@ -227,7 +228,8 @@ class TestBuildRGBFigure:
         from jellyscope.data.model.coordinates import pixel_scale_arcsec
 
         fig = self._build(store)
-        clumps = store.get_clumps(store.list_datasets()[0])
+        clumps = store.get_dataset(store.list_datasets()[0]).clumps
+        assert clumps is not None
         dataset = store.get_dataset(store.list_datasets()[0])
         datacube = dataset.get_datacube(dataset.list_datacubes()[0])
         clump_list = clumps.list_clumps()

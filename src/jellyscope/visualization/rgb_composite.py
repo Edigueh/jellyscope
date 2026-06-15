@@ -30,6 +30,7 @@ from jellyscope.visualization._viz_helpers import (
     build_radec_customdata_grid,
 )
 from jellyscope.visualization.image_viewer import (
+    _default_alpha,
     _estimate_background,
     create_centroid_markers,
     create_clump_boundary_traces,
@@ -61,7 +62,7 @@ def lupton_rgb_composite(
     intensity = (r_data + g_data + b_data) / 3.0
     m, sigma = _estimate_background(intensity)
     if alpha is None:
-        alpha = 0.02 / (sigma + 1e-10)
+        alpha = _default_alpha(sigma)
 
     i_shifted = intensity - m
     f_i = np.arcsinh(alpha * softening * i_shifted) / softening
@@ -235,7 +236,7 @@ def build_rgb_figure(
         click_target["hoverinfo"] = "skip"
 
     boundaries = create_clump_boundary_traces(clumps, selected_ids, wcs=datacube.wcs)
-    centroids = create_centroid_markers(clumps, wcs=datacube.wcs)
+    centroids = create_centroid_markers(clumps, has_sky=has_sky, sec_pix=sec_pix or 0.0)
 
     data: list[dict[str, Any]] = [click_target, *boundaries, centroids]
 

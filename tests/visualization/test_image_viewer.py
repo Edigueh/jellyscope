@@ -90,12 +90,6 @@ class TestNormalizeStretchDispatch:
         assert np.all(finite >= 0.0)
         assert np.all(finite <= 1.0)
 
-    def test_dispatch_power(self):
-        rng = np.random.default_rng(0)
-        data = rng.normal(50, 10, (20, 20))
-        result = _normalize_stretch(data, stretch="power")
-        assert result.shape == (20, 20)
-
     def test_dispatch_unknown_falls_back_to_log(self):
         data = np.array([[1.0, 10.0], [100.0, 1000.0]])
         result_unknown = _normalize_stretch(data, stretch="unknown_stretch")

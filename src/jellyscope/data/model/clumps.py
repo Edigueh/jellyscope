@@ -46,7 +46,7 @@ class ClumpProperties(BaseModel):
     x0: float
     y0: float
     area_kpc2: float
-    r_eff_kpc2: float
+    r_eff_kpc: float
     inside: bool
     component: str
     ra_deg: float | None = None
@@ -85,7 +85,7 @@ class ClumpCatalog:
                 x0=float(row["x0"]),
                 y0=float(row["y0"]),
                 area_kpc2=float(row["area_kpc2"]),
-                r_eff_kpc2=float(row["r_eff_kpc"]),
+                r_eff_kpc=float(row["r_eff_kpc"]),
                 inside=bool(row["inside"]),
                 component=str(row["component"]),
             )
@@ -116,9 +116,6 @@ class ClumpCatalog:
         # Populated by ``attach_skycoords`` when a celestial WCS is available.
         self._centroid_skycoords: SkyCoord | None = None
 
-    def _is_coordinate_in_bounds(self, x: int, y: int) -> bool:
-        return 0 <= x < self.nx and 0 <= y < self.ny
-
     def get_clump_by_id(self, clump_id: int) -> ClumpProperties:
         """Fetch the property dataclass for a specific ID."""
         return self.clumps[clump_id]
@@ -129,7 +126,7 @@ class ClumpCatalog:
 
     def get_clump_id_at_pixel(self, x: int, y: int) -> int | None:
         """Return clump id at the given pixel, or None if no clump is set there."""
-        if self._is_coordinate_in_bounds(x, y):
+        if 0 <= x < self.nx and 0 <= y < self.ny:
             val = self._clump_map[y, x]
             return int(val) if val >= 0 else None
         return None
@@ -156,7 +153,6 @@ class ClumpCatalog:
 
         points = np.column_stack([xs, ys])
         try:
-            # https://www.geeksforgeeks.org/dsa/convex-hull-algorithm/
             hull = ConvexHull(points)  # smallest convex polygon that encloses all of the points.
             verts = hull.vertices
 

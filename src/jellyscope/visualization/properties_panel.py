@@ -17,7 +17,7 @@ def format_clump_properties(clump: ClumpProperties) -> dict[str, Any]:
         "Area (arcsec\u00b2)": f"{clump.area_arcsec2:.4f}",
         "Area (kpc\u00b2)": f"{clump.area_kpc2:.4f}",
         "R_eff (arcsec)": f"{clump.r_eff_arcsec:.4f}",
-        "R_eff (kpc)": f"{clump.r_eff_kpc2:.4f}",
+        "R_eff (kpc)": f"{clump.r_eff_kpc:.4f}",
         "Centroid x": f"{clump.x0:.1f}",
         "Centroid y": f"{clump.y0:.1f}",
         "RA (deg)": ra_str,

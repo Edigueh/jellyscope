@@ -113,18 +113,6 @@ class DataStore:
             raise KeyError(f"Unknown dataset '{name}'. Available: {list(self.datasets)}")
         return self.datasets[name]
 
-    # Datacube/clump access scoped to a dataset.
-    def get_datacube(self, dataset_name: str, datacube_name: str) -> DataCube:
-        return self.get_dataset(dataset_name).get_datacube(datacube_name)
-
-    def list_datacubes(self, dataset_name: str) -> list[str]:
-        return self.get_dataset(dataset_name).list_datacubes()
-
-    def get_clumps(self, dataset_name: str) -> ClumpCatalog:
-        ds = self.get_dataset(dataset_name)
-        assert ds.clumps is not None
-        return ds.clumps
-
     @classmethod
     def get(cls, config: JellyscopeConfig | None = None) -> "DataStore":
         """Return the singleton instance."""

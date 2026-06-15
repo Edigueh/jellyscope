@@ -3,14 +3,6 @@
  * Manages state, API calls, Plotly rendering, and user interactions.
  */
 
-function debounce(fn, ms) {
-    let timer;
-    return function (...args) {
-        clearTimeout(timer);
-        timer = setTimeout(() => fn.apply(this, args), ms);
-    };
-}
-
 const DEFAULT_RGB_FILTERS = {r: "F200W", g: "F115W", b: "F090W"};
 
 // Fallback wavelength offsets (µm) used when a default filter lacks a
@@ -46,16 +38,9 @@ function knownWavelengths(filterList) {
 
 // argmin distance to target.
 function nearestKnownToWl(known, targetWl) {
-    let best = known[0];
-    let bestDist = Infinity;
-    for (const k of known) {
-        const d = Math.abs(k.wl - targetWl);
-        if (d < bestDist) {
-            best = k;
-            bestDist = d;
-        }
-    }
-    return best;
+    return known.reduce((a, b) =>
+        Math.abs(a.wl - targetWl) <= Math.abs(b.wl - targetWl) ? a : b
+    );
 }
 
 // Position-only fallback when fewer than 3 filters carry a wavelength.
@@ -158,14 +143,23 @@ async function onDatasetChanged() {
 }
 
 function rebuildRGBSelects() {
-    const selects = ["rgb-r", "rgb-g", "rgb-b"];
     // Re-derive defaults against the currently-loaded filter set.
     const resolved = resolveRgbDefaults(currentFilters);
     state.rgbR = resolved.r;
     state.rgbG = resolved.g;
     state.rgbB = resolved.b;
+    fillRgbSelects();
+    captureRgbDeltas();
+    snapRgbFromAnchor("R");
+    syncRgbSelects();
+}
+
+// Populate the three RGB <select>s from currentFilters using the current
+// state.rgbR/G/B as the selected indices.
+function fillRgbSelects() {
+    const ids = ["rgb-r", "rgb-g", "rgb-b"];
     const defaults = [state.rgbR, state.rgbG, state.rgbB];
-    selects.forEach((id, idx) => {
+    ids.forEach((id, idx) => {
         const sel = document.getElementById(id);
         sel.innerHTML = "";
         currentFilters.forEach((name, i) => {
@@ -177,9 +171,6 @@ function rebuildRGBSelects() {
             sel.appendChild(opt);
         });
     });
-    captureRgbDeltas();
-    snapRgbFromAnchor("R");
-    syncRgbSelects();
 }
 
 const plotlyConfig = {
@@ -201,19 +192,7 @@ async function init() {
 }
 
 function populateRGBSelects() {
-    const selects = ["rgb-r", "rgb-g", "rgb-b"];
-    const defaults = [state.rgbR, state.rgbG, state.rgbB];
-    selects.forEach((id, idx) => {
-        const sel = document.getElementById(id);
-        currentFilters.forEach((name, i) => {
-            const opt = document.createElement("option");
-            opt.value = i;
-            const wl = WAVELENGTHS[name];
-            opt.textContent = wl ? `${name} (${wl} µm)` : name;
-            if (i === defaults[idx]) opt.selected = true;
-            sel.appendChild(opt);
-        });
-    });
+    fillRgbSelects();
     captureRgbDeltas();
     snapRgbFromAnchor("R");
     syncRgbSelects();
@@ -330,26 +309,14 @@ function setupEventListeners() {
     });
 
     // RGB filter selectors
-    document.getElementById("rgb-r").addEventListener("change", (e) => {
-        state.rgbR = Number.parseInt(e.target.value);
-        snapRgbFromAnchor("R");
-        syncRgbSelects();
-        updateFilterLabel();
-        renderViewer();
-    });
-    document.getElementById("rgb-g").addEventListener("change", (e) => {
-        state.rgbG = Number.parseInt(e.target.value);
-        snapRgbFromAnchor("G");
-        syncRgbSelects();
-        updateFilterLabel();
-        renderViewer();
-    });
-    document.getElementById("rgb-b").addEventListener("change", (e) => {
-        state.rgbB = Number.parseInt(e.target.value);
-        snapRgbFromAnchor("B");
-        syncRgbSelects();
-        updateFilterLabel();
-        renderViewer();
+    [["rgb-r", "R"], ["rgb-g", "G"], ["rgb-b", "B"]].forEach(([id, anchor]) => {
+        document.getElementById(id).addEventListener("change", (e) => {
+            state["rgb" + anchor] = Number.parseInt(e.target.value);
+            snapRgbFromAnchor(anchor);
+            syncRgbSelects();
+            updateFilterLabel();
+            renderViewer();
+        });
     });
 
     // RGB method toggle
@@ -360,11 +327,12 @@ function setupEventListeners() {
     });
 
     // Q slider with debounce
-    const debouncedRender = debounce(renderViewer, 300);
+    let qTimer;
     document.getElementById("rgb-q").addEventListener("input", (e) => {
         state.rgbQ = Number.parseFloat(e.target.value);
         document.getElementById("rgb-q-label").textContent = state.rgbQ.toFixed(1);
-        debouncedRender();
+        clearTimeout(qTimer);
+        qTimer = setTimeout(renderViewer, 300);
     });
 
     // Drag mode buttons
@@ -624,9 +592,10 @@ function _zoomOnWheel(e) {
     const cx = _cursorOnAxis(fullXa, offsetX, (xa.lo + xa.hi) / 2);
     const cy = _cursorOnAxis(fullYa, offsetY, (ya.lo + ya.hi) / 2);
 
+    // Both axes zoom by the same factor → aspect ratio preserved →
+    // xaxis.scaleanchor accepts both writes without snapping.
     const [xLo, xHi] = _zoomAxis(xa, cx, factor);
     const [yLo, yHi] = _zoomAxis(ya, cy, factor);
-
     Plotly.relayout(div, {
         "xaxis.range": [xLo, xHi],
         "yaxis.range": [yLo, yHi],
@@ -634,9 +603,8 @@ function _zoomOnWheel(e) {
 }
 
 // Re-clamp ranges produced by external paths (toolbar zoom-in, drag-rectangle,
-// double-click). Plotly fires plotly_relayout *after* applying the range; if
-// the new range is below min_span we relayout once more to grow back up to
-// min_span. The __clamping flag prevents feedback loops.
+// double-click). Clamps both axes together so the start-aspect ratio is
+// preserved and xaxis.scaleanchor doesn't fight the relayout.
 function _relayoutClampGuard(div, eventData) {
     if (div.__clamping) return;
 
@@ -781,6 +749,9 @@ function _panMouseMove(e) {
 
     if (viewer.__clamping) return;
     viewer.__clamping = true;
+    // Both axes must be set: pan translates each independently. scaleanchor
+    // locks scale (zoom) only — Y span and X span both equal the start span,
+    // so the aspect ratio is preserved and Plotly accepts both ranges.
     Plotly.relayout(viewer, {
         "xaxis.range": [xLo, xHi],
         "yaxis.range": [yLo, yHi],

@@ -36,7 +36,6 @@
                 <select id="stretch-select">
                     <option value="lupton_asinh" selected>Asinh (Lupton)</option>
                     <option value="log">Log</option>
-                    <option value="power">Power</option>
                 </select>
 
                 <span class="separator">|</span>
@@ -124,7 +123,6 @@
     </main>
 
     <script>
-        const DATASETS = {{ datasets | tojson | safe }};
         const DEFAULT_DATASET = {{ default_dataset | tojson | safe }};
         const DEFAULT_DATACUBE = {{ default_datacube | tojson | safe }};
         const FILTERS = {{ filters | tojson | safe }};

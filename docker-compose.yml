@@ -17,6 +17,4 @@ services:
     env_file:
       - path: .env
         required: false
-    environment:
-      JELLYSCOPE_ENABLE_SED: "${JELLYSCOPE_ENABLE_SED:-false}"
     restart: unless-stopped

@@ -80,8 +80,6 @@ def build_dark_axis_layout(
         "title": {"text": title_text, "font": {"color": GRAY}},
         "xaxis": {
             "title": axis_label_x,
-            "scaleanchor": "y",
-            "constrain": "domain",
             "gridcolor": SOFT_BLACK,
             "color": DARK_GRAY,
             "range": [x_min, x_max],

@@ -19,7 +19,6 @@ class TestDatacube:
         self.dc: DataCube = self.ds.get_datacube("nircam")
 
     def test_datacube_loads_shape(self):
-        assert self.dc.shape == (20, 221, 172)
         assert self.dc.n_channels == 20
         assert self.dc.ny == 221
         assert self.dc.nx == 172

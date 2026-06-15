@@ -115,7 +115,9 @@ main {
     margin: 0 4px;
 }
 
-.mode-btn {
+.mode-btn,
+.view-btn,
+.toggle-btn {
     background: var(--bg-panel);
     color: var(--text-secondary);
     border: 1px solid var(--border);
@@ -126,35 +128,16 @@ main {
     transition: all 0.15s;
 }
 
-.mode-btn:hover {
+.mode-btn:hover,
+.view-btn:hover,
+.toggle-btn:hover {
     border-color: var(--accent);
     color: var(--text-primary);
 }
 
-.mode-btn.active {
-    background: var(--accent);
-    color: #000;
-    border-color: var(--accent);
-    font-weight: 600;
-}
-
-.view-btn {
-    background: var(--bg-panel);
-    color: var(--text-secondary);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 3px 10px;
-    cursor: pointer;
-    font-size: 12px;
-    transition: all 0.15s;
-}
-
-.view-btn:hover {
-    border-color: var(--accent);
-    color: var(--text-primary);
-}
-
-.view-btn.active {
+.mode-btn.active,
+.view-btn.active,
+.toggle-btn.active {
     background: var(--accent);
     color: #000;
     border-color: var(--accent);
@@ -194,29 +177,6 @@ main {
     font-size: 12px;
 }
 
-.toggle-btn {
-    background: var(--bg-panel);
-    color: var(--text-secondary);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 3px 10px;
-    cursor: pointer;
-    font-size: 12px;
-    transition: all 0.15s;
-}
-
-.toggle-btn:hover {
-    border-color: var(--accent);
-    color: var(--text-primary);
-}
-
-.toggle-btn.active {
-    background: var(--accent);
-    color: #000;
-    border-color: var(--accent);
-    font-weight: 600;
-}
-
 #galaxy-viewer {
     flex: 1;
     min-height: 0;
@@ -251,9 +211,6 @@ main {
 }
 
 /* Properties panel */
-#properties-panel {
-}
-
 #properties-content {
     padding: 8px 12px;
     font-size: 12px;

@@ -8,6 +8,7 @@ from starlette.responses import HTMLResponse, Response
 
 from jellyscope.config import NIRCAM_WAVELENGTHS
 from jellyscope.data.data_store import Dataset, DataStore
+from jellyscope.data.model.clumps import ClumpCatalog
 from jellyscope.data.model.coordinates import skycoord_separation_arcsec
 from jellyscope.model.schemas import (
     ClumpDetailResponse,
@@ -39,6 +40,12 @@ def _dataset(name: str) -> Dataset:
         return _store().get_dataset(name)
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
+
+
+def _dataset_clumps(name: str) -> tuple[Dataset, ClumpCatalog]:
+    ds = _dataset(name)
+    assert ds.clumps is not None
+    return ds, ds.clumps
 
 
 # Pages.
@@ -107,7 +114,7 @@ def get_rgb_viewer_figure(
     method: Annotated[Literal["percentile_asinh", "lupton"], Query()] = "percentile_asinh",
     softening: Annotated[float, Query()] = 8.0,
 ) -> RGBViewerResponse:
-    ds = _dataset(dataset_name)
+    ds, clumps = _dataset_clumps(dataset_name)
     dc = ds.get_datacube(datacube_name)
     n_ch = dc.n_channels
     for label, idx in [("r", r), ("g", g), ("b", b)]:
@@ -119,9 +126,8 @@ def get_rgb_viewer_figure(
     selected_ids: list[int] = (
         [int(i) for i in selected.split(",") if i.strip()] if selected else []
     )
-    assert ds.clumps is not None
     figure: dict[str, Any] = build_rgb_figure(
-        dc, r, g, b, ds.clumps, selected_ids, method=method, softening=softening
+        dc, r, g, b, clumps, selected_ids, method=method, softening=softening
     )
     return RGBViewerResponse(
         figure=figure,
@@ -141,9 +147,9 @@ def get_viewer_figure(
     channel_index: int,
     selected: Annotated[str, Query()] = "",
     colorscale: Annotated[str, Query()] = "Viridis",
-    stretch: Annotated[Literal["log", "lupton_asinh", "power"], Query()] = "log",
+    stretch: Annotated[Literal["log", "lupton_asinh"], Query()] = "log",
 ) -> ViewerResponse:
-    ds = _dataset(dataset_name)
+    ds, clumps = _dataset_clumps(dataset_name)
     dc = ds.get_datacube(datacube_name)
     if not 0 <= channel_index < dc.n_channels:
         raise HTTPException(
@@ -153,9 +159,8 @@ def get_viewer_figure(
     selected_ids: list[int] = (
         [int(i) for i in selected.split(",") if i.strip()] if selected else []
     )
-    assert ds.clumps is not None
     figure: dict[str, Any] = build_viewer_figure(
-        dc, channel_index, ds.clumps, selected_ids, colorscale, stretch
+        dc, channel_index, clumps, selected_ids, colorscale, stretch
     )
     return ViewerResponse(figure=figure, filter_name=dc.filter_names[channel_index])
 
@@ -167,9 +172,8 @@ def list_clumps(
     component: Annotated[str | None, Query()] = None,
     inside: Annotated[bool | None, Query()] = None,
 ) -> ClumpsListResponse:
-    ds = _dataset(dataset_name)
-    assert ds.clumps is not None
-    clumps = ds.clumps.filter_clumps(component, inside)
+    _, clumps = _dataset_clumps(dataset_name)
+    items = clumps.filter_clumps(component, inside)
     return ClumpsListResponse(
         clumps=[
             ClumpListItem(
@@ -180,7 +184,7 @@ def list_clumps(
                 component=c.component,
                 inside=c.inside,
             )
-            for c in clumps
+            for c in items
         ]
     )
 
@@ -196,9 +200,8 @@ def get_clump_separations(dataset_name: str) -> ClumpSeparationsResponse:
     Returns 422 when the dataset's WCS lacks celestial axes. ``sep_pc`` is
     always ``None`` until a galaxy distance is configured (option A).
     """
-    ds = _dataset(dataset_name)
-    assert ds.clumps is not None
-    coords = ds.clumps.centroid_skycoords()
+    _, clumps = _dataset_clumps(dataset_name)
+    coords = clumps.centroid_skycoords()
     if coords is None:
         raise HTTPException(
             status_code=422,
@@ -208,7 +211,7 @@ def get_clump_separations(dataset_name: str) -> ClumpSeparationsResponse:
             ),
         )
 
-    clump_list = ds.clumps.list_clumps()
+    clump_list = clumps.list_clumps()
     pairs: list[ClumpSeparation] = []
     n = len(clump_list)
     for i in range(n):
@@ -238,10 +241,9 @@ def get_clump_separations(dataset_name: str) -> ClumpSeparationsResponse:
 
 @router.get("/api/datasets/{dataset_name}/clumps/{clump_id}", response_model=ClumpDetailResponse)
 def get_clump(dataset_name: str, clump_id: int) -> ClumpDetailResponse:
-    ds = _dataset(dataset_name)
-    assert ds.clumps is not None
-    clump = ds.clumps.get_clump_by_id(clump_id)
-    boundary = ds.clumps.get_boundary_coords(clump_id)
+    _, clumps = _dataset_clumps(dataset_name)
+    clump = clumps.get_clump_by_id(clump_id)
+    boundary = clumps.get_boundary_coords(clump_id)
     props = format_clump_properties(clump)
     return ClumpDetailResponse(
         properties=props,
@@ -252,7 +254,6 @@ def get_clump(dataset_name: str, clump_id: int) -> ClumpDetailResponse:
 # Pixel Interaction.
 @router.get("/api/datasets/{dataset_name}/pixel/{x}/{y}/clump", response_model=PixelClumpResponse)
 def get_pixel_clump(dataset_name: str, x: int, y: int) -> PixelClumpResponse:
-    ds = _dataset(dataset_name)
-    assert ds.clumps is not None
-    cid = ds.clumps.get_clump_id_at_pixel(x, y)
+    _, clumps = _dataset_clumps(dataset_name)
+    cid = clumps.get_clump_id_at_pixel(x, y)
     return PixelClumpResponse(clump_id=cid)

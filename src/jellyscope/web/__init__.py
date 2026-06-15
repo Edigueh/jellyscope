@@ -1,4 +1,4 @@
-"""Flask application factory."""
+"""FastAPI application factory."""
 
 from pathlib import Path
 
@@ -12,7 +12,7 @@ from jellyscope.data.data_store import DataStore
 
 
 def create_app(config: JellyscopeConfig | None = None) -> FastAPI:
-    """Create and configure the Flask application."""
+    """Create and configure the FastAPI application."""
     if config is None:
         config = JellyscopeConfig()
 

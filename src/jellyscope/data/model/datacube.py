@@ -8,7 +8,7 @@ from astropy.wcs import WCS  # Handles "World Coordinate System" (mapping pixels
 
 
 class DataCube:
-    """ "Manages a 3D FITS datacube (filter, y, x).
+    """Manages a 3D FITS datacube (filter, y, x).
 
     Reads all metadata (filters, WCS, dimensions) from the FITS file header.
     FITS = (Flexible Image Transport System).
@@ -38,10 +38,6 @@ class DataCube:
             else:
                 names.append(f"CH{i}")
         return names
-
-    @property
-    def shape(self) -> tuple[int, int, int]:
-        return self.data.shape
 
     @property
     def spatial_shape(self) -> tuple[int, int]:

@@ -41,7 +41,6 @@ Then open <http://127.0.0.1:5000> in your browser.
 --host HOST       Server host (default: 127.0.0.1)
 --port PORT       Server port (default: 5000)
 --data-dir DIR    Path to data directory (default: data)
---no-debug        Disable debug mode
 ```
 
 ## Run with Docker

@@ -40,6 +40,11 @@ def _estimate_background(data: np.ndarray) -> tuple[float, float]:
     return float(median), float(std)
 
 
+def _default_alpha(sigma: float) -> float:
+    """Default Lupton linear stretch factor from background noise sigma."""
+    return 0.02 / (sigma + 1e-10)
+
+
 def _lupton_asinh_stretch(
     data: np.ndarray, softening: float = 8.0, alpha: float | None = None
 ) -> np.ndarray:
@@ -54,7 +59,7 @@ def _lupton_asinh_stretch(
 
     m, sigma = _estimate_background(data)
     if alpha is None:
-        alpha = 0.02 / (sigma + 1e-10)
+        alpha = _default_alpha(sigma)
 
     stretched = np.arcsinh(alpha * softening * (data - m)) / softening
 
@@ -66,24 +71,6 @@ def _lupton_asinh_stretch(
         stretched = stretched / vmax
     stretched = np.clip(stretched, 0.0, 1.0)
     stretched[~np.isfinite(data)] = np.nan
-    return stretched
-
-
-def _power_stretch(data: np.ndarray) -> np.ndarray:  # pragma: no cover
-    """Power stretch — tunable, lower exponent = more aggressive on faint features."""
-    from astropy.visualization import PowerStretch
-
-    finite = data[np.isfinite(data)]
-    if len(finite) == 0:
-        return data
-
-    vmin = np.percentile(finite, 20)
-    vmax = np.percentile(finite, 99.5)
-    clipped = np.clip(data, a_min=vmin, a_max=vmax)
-    normalized = (clipped - vmin) / (vmax - vmin + 1e-10)
-
-    stretch = PowerStretch(a=0.5)
-    stretched: np.ndarray = stretch(normalized)
     return stretched
 
 
@@ -124,7 +111,6 @@ def _normalize_stretch(data: np.ndarray, stretch: str = "log") -> np.ndarray:
     _stretch_map: dict[str, Callable[[np.ndarray], np.ndarray]] = {
         "log": _log_stretch,
         "lupton_asinh": _lupton_asinh_stretch,
-        "power": _power_stretch,
     }
     func = _stretch_map.get(stretch, _log_stretch)
     return func(data)
@@ -277,13 +263,14 @@ def create_clump_boundary_traces(
     return traces
 
 
-def create_centroid_markers(clumps: ClumpCatalog, wcs: WCS | None = None) -> dict[str, Any]:
+def create_centroid_markers(
+    clumps: ClumpCatalog,
+    *,
+    has_sky: bool,
+    sec_pix: float,
+) -> dict[str, Any]:
     """Create scatter trace of clump centroids with labels."""
     all_clumps: list[ClumpProperties] = clumps.list_clumps()
-    has_sky = (wcs is not None and wcs.has_celestial) or any(
-        c.ra_deg is not None for c in all_clumps
-    )
-    sec_pix = pixel_scale_arcsec(wcs) if (wcs is not None and wcs.has_celestial) else 0.0
     cx = (clumps.nx - 1) / 2.0
     cy = (clumps.ny - 1) / 2.0
 
@@ -347,7 +334,9 @@ def build_viewer_figure(
     boundaries: list[dict[str, Any]] = create_clump_boundary_traces(
         clumps, selected_ids, wcs=datacube.wcs
     )
-    centroids: dict[str, Any] = create_centroid_markers(clumps, wcs=datacube.wcs)
+    centroids: dict[str, Any] = create_centroid_markers(
+        clumps, has_sky=has_sky, sec_pix=sec_pix or 0.0
+    )
 
     # *boundaries unpacks the list from. E.g: boundaries = [a, b, c...]; *boundaries = a, b, c...
     data: list[dict[str, Any]] = [heatmap, *boundaries, centroids]
