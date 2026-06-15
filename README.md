@@ -49,8 +49,8 @@ Then open <http://127.0.0.1:5000> in your browser.
 Alternatively, run Jellyscope as a containerized service via Docker Compose. No local Python or `uv` required — only Docker.
 
 ```bash
-just docker-build       # docker compose build
-just docker-up          # docker compose up -d
+just docker build       # docker compose build
+just docker up          # docker compose up -d
 ```
 
 Then open <http://localhost:5000>.
@@ -61,7 +61,7 @@ The local `./data/` directory is bind-mounted read-only at `/data` inside the co
 docker compose run --rm jellyscope --help
 ```
 
-Tear down with `just docker-down`.
+Tear down with `just docker down`.
 
 ## Data Format
 
@@ -76,22 +76,22 @@ Place your data in the `data/` directory:
 This project uses modern Python tooling managed via [uv](https://docs.astral.sh/uv/) and a [`justfile`](https://just.systems/) (install with `brew install just` on macOS).
 
 ```bash
-just               # List available recipes
-just install       # Install deps + set up pre-commit hooks
-just lint          # Run ruff linter
-just lint-fix      # Auto-fix lint issues
-just format        # Format code with ruff
-just typecheck     # Run mypy type checking
-just test          # Run tests with coverage
-just test-fast     # Quick test run (no coverage, stop on first failure)
-just check         # Run ALL checks (lint + format + typecheck + tests)
-just spellcheck    # Check for typos in code/docs
-just serve         # Start the dev server
-just docker-build  # Build the Docker image
-just docker-up     # Start the containerized service
-just docker-down   # Stop the containerized service
-just docker-logs   # Tail container logs
-just clean         # Remove build artifacts
+just                   # List available recipes
+just install           # Install deps + set up pre-commit hooks
+just check lint        # Run ruff linter
+just check lint-fix    # Auto-fix lint issues
+just check format      # Format code with ruff
+just check typecheck   # Run mypy type checking
+just check test        # Run tests with coverage
+just check test-fast   # Quick test run (no coverage, stop on first failure)
+just check all         # Run ALL checks (lint + format + typecheck + tests)
+just check spellcheck  # Check for typos in code/docs
+just serve             # Start the dev server
+just docker build      # Build the Docker image
+just docker up         # Start the containerized service
+just docker down       # Stop the containerized service
+just docker logs       # Tail container logs
+just clean             # Remove build artifacts
 ```
 
 ### Tooling

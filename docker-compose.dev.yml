@@ -1,4 +1,4 @@
-# Dev override layered on top of docker-compose.yml via `just docker-dev`.
+# Dev override layered on top of docker-compose.yml via `just docker dev`.
 #
 # Why the entrypoint is replaced: the `jellyscope` console script does not expose
 # a --reload flag, and uvicorn auto-reload requires invoking uvicorn directly with
