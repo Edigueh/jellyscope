@@ -16,7 +16,6 @@ def test_main_default_args():
         config = mock_create_app.call_args[0][0]
         assert config.host == "127.0.0.1"
         assert config.port == 5000
-        assert config.debug is True
         mock_uvicorn.run.assert_called_once()
 
 
@@ -30,7 +29,6 @@ def test_main_custom_args():
                 "0.0.0.0",
                 "--port",
                 "8080",
-                "--no-debug",
                 "--data-dir",
                 "data",
             ],
@@ -42,5 +40,4 @@ def test_main_custom_args():
         config = mock_create_app.call_args[0][0]
         assert config.host == "0.0.0.0"
         assert config.port == 8080
-        assert config.debug is False
         mock_uvicorn.run.assert_called_once()

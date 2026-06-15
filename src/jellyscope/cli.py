@@ -16,14 +16,12 @@ def main() -> None:
     parser.add_argument(
         "--data-dir", default="data", help="Path to data directory (default: data)"
     )
-    parser.add_argument("--no-debug", action="store_true", help="Disable debug mode")
     args = parser.parse_args()
 
     config = JellyscopeConfig(
         data_dir=Path(args.data_dir),
         host=args.host,
         port=args.port,
-        debug=not args.no_debug,
     )
     app = create_app(config)
     print(f"Starting Jellyscope on http://{config.host}:{config.port}")

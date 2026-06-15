@@ -7,8 +7,6 @@ from astropy.coordinates import SkyCoord
 from astropy.wcs import WCS
 
 from jellyscope.data.model.coordinates import (
-    ARCSEC_PER_RAD,
-    angular_to_pc,
     arcsec_axis,
     image_arcsec_extent,
     image_axis_bounds,
@@ -67,19 +65,6 @@ def test_skycoord_separation_handles_known_pair():
     c2 = SkyCoord(ra=10.0 * u.deg, dec=(1.0 / 3600.0) * u.deg)
     sep = skycoord_separation_arcsec(c1, c2)
     assert sep == pytest.approx(1.0, abs=1e-6)
-
-
-def test_angular_to_pc_at_10_mpc():
-    # 1 arcsec at 10 Mpc should be 10e6 / 206265 pc ~= 48.481 pc
-    pc = angular_to_pc(1.0, 10.0)
-    assert pc == pytest.approx(10e6 / ARCSEC_PER_RAD, rel=1e-9)
-    assert pc == pytest.approx(48.4813, abs=1e-3)
-
-
-def test_angular_to_pc_scales_linearly_in_distance():
-    a = angular_to_pc(2.5, 5.0)
-    b = angular_to_pc(2.5, 50.0)
-    assert b == pytest.approx(10.0 * a, rel=1e-12)
 
 
 def test_pixels_to_radec_arrays_vector_input():

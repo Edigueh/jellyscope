@@ -7,7 +7,6 @@ of detected clumps (e.g., star-forming regions in a galaxy).
 
 import logging
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -72,33 +71,23 @@ class ClumpCatalog:
         """
         self.shape: tuple[int, int] = spatial_shape
         self.ny, self.nx = spatial_shape
-        self.CLUMP_ID_KEY: str = "clump_id"
-        self.AREA_PIX_KEY: str = "area_pix"
-        self.AREA_ARCSEC2_KEY: str = "area_arcsec2"
-        self.R_EFF_ARCSEC_KEY: str = "r_eff_arcsec"
-        self.X0_KEY: str = "x0"
-        self.Y0_KEY: str = "y0"
-        self.AREA_KPC2_KEY: str = "area_kpc2"
-        self.R_EFF_KPC2_KEY: str = "r_eff_kpc"
-        self.INSIDE_KEY: str = "inside"
-        self.COMPONENT_KEY: str = "component"
 
         # 1. Load summary properties
         props_df = pd.read_csv(properties_path)
         self.clumps: dict[int, ClumpProperties] = {}
         for _, row in props_df.iterrows():
-            cid = int(row[self.CLUMP_ID_KEY])
+            cid = int(row["clump_id"])
             self.clumps[cid] = ClumpProperties(
                 clump_id=cid,
-                area_pix=int(row[self.AREA_PIX_KEY]),
-                area_arcsec2=float(row[self.AREA_ARCSEC2_KEY]),
-                r_eff_arcsec=float(row[self.R_EFF_ARCSEC_KEY]),
-                x0=float(row[self.X0_KEY]),
-                y0=float(row[self.Y0_KEY]),
-                area_kpc2=float(row[self.AREA_KPC2_KEY]),
-                r_eff_kpc2=float(row[self.R_EFF_KPC2_KEY]),
-                inside=bool(row[self.INSIDE_KEY]),
-                component=str(row[self.COMPONENT_KEY]),
+                area_pix=int(row["area_pix"]),
+                area_arcsec2=float(row["area_arcsec2"]),
+                r_eff_arcsec=float(row["r_eff_arcsec"]),
+                x0=float(row["x0"]),
+                y0=float(row["y0"]),
+                area_kpc2=float(row["area_kpc2"]),
+                r_eff_kpc2=float(row["r_eff_kpc"]),
+                inside=bool(row["inside"]),
+                component=str(row["component"]),
             )
 
         # 2. Load and map pixel-level data
@@ -107,16 +96,18 @@ class ClumpCatalog:
         # _clump_map is a 2D grid where each cell contains the ID of the clump occupying it.
         self._clump_map = np.full(spatial_shape, -1, dtype=np.int32)
 
-        for cid in self.clumps:
-            # Create a boolean mask for each individual clump for fast logical operations.
-            mask = np.zeros(spatial_shape, dtype=bool)
-            clump_pixels = pixels_df[pixels_df[self.CLUMP_ID_KEY] == cid]
-            for _, px in clump_pixels.iterrows():
-                x, y = int(px["x"]), int(px["y"])
-                if self._is_coordinate_in_bounds(x, y):
-                    mask[y, x] = True
-                    self._clump_map[y, x] = cid
+        all_xs = pixels_df["x"].to_numpy(dtype=np.int64)
+        all_ys = pixels_df["y"].to_numpy(dtype=np.int64)
+        all_cids = pixels_df["clump_id"].to_numpy(dtype=np.int64)
+        in_bounds = (all_xs >= 0) & (all_xs < self.nx) & (all_ys >= 0) & (all_ys < self.ny)
 
+        for cid in self.clumps:
+            sel = in_bounds & (all_cids == cid)
+            xs_cid = all_xs[sel]
+            ys_cid = all_ys[sel]
+            mask = np.zeros(spatial_shape, dtype=bool)
+            mask[ys_cid, xs_cid] = True
+            self._clump_map[ys_cid, xs_cid] = cid
             self._pixels_masks[cid] = mask
 
         # Lazy-loaded cache for geometric boundaries
@@ -135,13 +126,6 @@ class ClumpCatalog:
     def get_pixel_mask(self, clump_id: int) -> np.ndarray:
         """Get a 2D boolean array where True represents the clump area."""
         return self._pixels_masks[clump_id]
-
-    def get_combined_mask(self, clump_ids: list[int]) -> np.ndarray:
-        """Merges multiple clumps into a single boolean mask using bitwise OR."""
-        mask = np.zeros(self.shape, dtype=bool)
-        for cid in clump_ids:
-            mask |= self._pixels_masks[cid]
-        return mask
 
     def get_clump_id_at_pixel(self, x: int, y: int) -> int | None:
         """Return clump id at the given pixel, or None if no clump is set there."""
@@ -246,23 +230,3 @@ class ClumpCatalog:
     def centroid_skycoords(self) -> SkyCoord | None:
         """Return cached centroid SkyCoord vector, or None if WCS unavailable."""
         return self._centroid_skycoords
-
-    def to_properties_list(self) -> list[dict[str, Any]]:
-        """Return all clump properties as a list of dicts for JSON serialization."""
-        return [
-            {
-                self.CLUMP_ID_KEY: c.clump_id,
-                self.AREA_PIX_KEY: c.area_pix,
-                self.AREA_ARCSEC2_KEY: c.area_arcsec2,
-                self.R_EFF_ARCSEC_KEY: c.r_eff_arcsec,
-                self.X0_KEY: c.x0,
-                self.Y0_KEY: c.y0,
-                self.AREA_KPC2_KEY: c.area_kpc2,
-                self.R_EFF_KPC2_KEY: c.r_eff_kpc2,
-                self.INSIDE_KEY: c.inside,
-                self.COMPONENT_KEY: c.component,
-                "ra_deg": c.ra_deg,
-                "dec_deg": c.dec_deg,
-            }
-            for c in self.list_clumps()
-        ]

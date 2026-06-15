@@ -53,35 +53,3 @@ class DataCube:
             raise IndexError(f"Channel index {channel_index} out of range [0, {self.n_channels})")
         slice_: np.ndarray = self.data[channel_index]
         return slice_
-
-    def get_slice_by_name(self, filter_name: str) -> np.ndarray:
-        """Return 2D slice by filter name (e.g., 'F200W')"""
-        return self.get_slice_by_channel_index(self.filter_names.index(filter_name))
-
-    def get_spectrum_at_pixel(self, x: int, y: int) -> np.ndarray:
-        """Return 1D array of length n_channels for a single spaxel."""
-        # This returns all wavelengths (deepness) for a single spaxel.
-        return self.data[:, y, x].copy()
-
-    def get_mean_spectrum_for_mask(self, mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """Compute mean and std spectrum across masked pixels.
-
-        Args:
-            mask: Boolean 2D array (ny, nx).
-
-        Returns:
-            Tuple of (mean_spectrum, std_spectrum), each 1D with n_channels elements.
-        """
-        pixels = self.data[:, mask]  # Returns the pixels where the mask is True.
-        # Calculate average and standard deviation, ignoring NaN values.
-        mean = np.nanmean(pixels, axis=1)
-        std = np.nanstd(pixels, axis=1)
-        return mean, std
-
-    def to_json_slice(self, channel_index: int) -> list[list[float | None]]:
-        """Return a 2D slice as nested lists, with NaN replaced by None for Plotly."""
-        arr = self.get_slice_by_channel_index(channel_index)
-        out = arr.astype(object)
-        out[np.isnan(arr)] = None
-        result: list[list[float | None]] = out.tolist()
-        return result

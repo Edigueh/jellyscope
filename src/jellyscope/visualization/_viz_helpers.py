@@ -49,22 +49,18 @@ def build_radec_customdata_grid(
         ra = np.full((ny, nx), np.nan)
         dec = np.full((ny, nx), np.nan)
 
-    customdata: list[list[list[float | int | None]]] = []
-    for j in range(ny):
-        row_cd: list[list[float | int | None]] = []
-        for i in range(nx):
-            r = ra[j, i]
-            d = dec[j, i]
-            row_cd.append(
-                [
-                    int(i),
-                    int(j),
-                    float(r) if np.isfinite(r) else None,
-                    float(d) if np.isfinite(d) else None,
-                ]
-            )
-        customdata.append(row_cd)
-    return customdata
+    # Build (ny, nx, 4) object grid; non-finite ra/dec become None.
+    grid = np.empty((ny, nx, 4), dtype=object)
+    grid[..., 0] = xx_pix.astype(np.int64)
+    grid[..., 1] = yy_pix.astype(np.int64)
+    ra_obj = ra.astype(object)
+    dec_obj = dec.astype(object)
+    ra_obj[~np.isfinite(ra)] = None
+    dec_obj[~np.isfinite(dec)] = None
+    grid[..., 2] = ra_obj
+    grid[..., 3] = dec_obj
+    result: list[list[list[float | int | None]]] = grid.tolist()
+    return result
 
 
 def build_dark_axis_layout(

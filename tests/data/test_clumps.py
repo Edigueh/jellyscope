@@ -68,13 +68,6 @@ class TestClumps:
         assert all(c.inside is False for c in outside)
         assert len(inside) + len(outside) == 23
 
-    def test_combined_mask(self):
-        cid1, cid2 = 0, 1
-        c1: ClumpProperties = self.clumps.get_clump_by_id(cid1)
-        c2: ClumpProperties = self.clumps.get_clump_by_id(cid2)
-        mask: np.ndarray = self.clumps.get_combined_mask([cid1, cid2])
-        assert mask.sum() == c1.area_pix + c2.area_pix
-
     def test_pixel_out_of_bounds(self):
         assert self.clumps.get_clump_id_at_pixel(-1, -1) is None
         assert self.clumps.get_clump_id_at_pixel(9999, 9999) is None
@@ -133,24 +126,6 @@ class TestClumps:
             assert len(boundary) >= 2
             assert boundary[0] == boundary[-1]
 
-    def test_to_properties_list(self):
-        props: list[dict] = self.clumps.to_properties_list()
-        assert len(props) == 23
-        assert all(isinstance(p, dict) for p in props)
-        keys = {
-            "clump_id",
-            "area_pix",
-            "area_arcsec2",
-            "r_eff_arcsec",
-            "x0",
-            "y0",
-            "area_kpc2",
-            "r_eff_kpc",
-            "inside",
-            "component",
-        }
-        assert all(keys <= set(p.keys()) for p in props)
-
     def test_skycoords_attached(self):
         # DataStore attaches RA/Dec on load when WCS is celestial.
         coords = self.clumps.centroid_skycoords()
@@ -162,11 +137,3 @@ class TestClumps:
             assert c.dec_deg is not None
             assert -90.0 <= c.dec_deg <= 90.0
             assert 0.0 <= c.ra_deg <= 360.0
-
-    def test_skycoords_in_properties_list(self):
-        props = self.clumps.to_properties_list()
-        for p in props:
-            assert "ra_deg" in p
-            assert "dec_deg" in p
-            assert p["ra_deg"] is not None
-            assert p["dec_deg"] is not None

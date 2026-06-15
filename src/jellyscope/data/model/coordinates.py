@@ -1,16 +1,8 @@
-"""Coordinate utilities: pixel <-> sky coordinates, angular separations, and
-angular-to-physical conversions.
+"""Coordinate utilities: pixel <-> sky coordinates and angular separations.
 
 Pure helpers over ``astropy.wcs.WCS``. No I/O, no Plotly. Lives next to the
 ``DataCube`` and ``ClumpCatalog`` models because pixel↔sky conversion is a
 derivation step over the data those models hold.
-
-These functions intentionally rely on astropy's spherical-trigonometry
-implementations (``WCS.pixel_to_world`` for the projection,
-``SkyCoord.separation`` for the great-circle angular distance) rather than a
-hand-rolled haversine. Distance-times-angle gives the projected physical
-separation on the plane of the sky in the small-angle regime, which is fine
-for galaxy-scale fields-of-view.
 """
 
 from __future__ import annotations
@@ -30,9 +22,6 @@ class ImageAxisBounds(TypedDict):
     y: tuple[float, float]
     x_min_span: float
     y_min_span: float
-
-
-ARCSEC_PER_RAD: float = 206264.806247
 
 
 def pixel_to_skycoord(x: float | np.ndarray, y: float | np.ndarray, wcs: WCS) -> SkyCoord:
@@ -80,14 +69,6 @@ def pixels_to_radec_arrays(
 def skycoord_separation_arcsec(c1: SkyCoord, c2: SkyCoord) -> float:
     """Great-circle angular separation between two SkyCoord points in arcsec."""
     return float(c1.separation(c2).to(u.arcsec).value)
-
-
-def angular_to_pc(arcsec: float, distance_mpc: float) -> float:
-    """Convert an angular separation in arcsec to parsecs at a given distance.
-
-    Small-angle approximation: physical = angle_rad * distance.
-    """
-    return arcsec * (distance_mpc * 1e6) / ARCSEC_PER_RAD
 
 
 def pixel_scale_arcsec(wcs: WCS) -> float:

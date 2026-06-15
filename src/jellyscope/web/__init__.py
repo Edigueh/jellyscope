@@ -1,6 +1,5 @@
 """Flask application factory."""
 
-import json
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -29,7 +28,6 @@ def create_app(config: JellyscopeConfig | None = None) -> FastAPI:
 
     template_dir = Path(__file__).parent / "templates"
     templates = Jinja2Templates(directory=str(template_dir))
-    templates.env.filters["tojson"] = lambda val: json.dumps(val)
     app.state.templates = templates
 
     from jellyscope.web.routes import router

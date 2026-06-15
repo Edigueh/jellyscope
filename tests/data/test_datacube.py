@@ -34,20 +34,6 @@ class TestDatacube:
         assert s.shape == (221, 172)
         assert s.dtype == np.float64
 
-    def test_get_slice_by_name(self):
-        s: np.ndarray = self.dc.get_slice_by_name("F200W")
-        assert s.shape == (221, 172)
-
-    def test_get_spectrum_at_pixel(self):
-        spec: np.ndarray = self.dc.get_spectrum_at_pixel(80, 100)
-        assert spec.shape == (20,)
-
-    def test_to_json_slice(self):
-        json: list[list[int]] = self.dc.to_json_slice(0)
-        assert len(json) == 221
-        assert len(json)
-        assert all(isinstance(v, float | type(None)) for v in json[0])
-
     def test_both_datacubes_available(self):
         assert "nircam" in self.ds.list_datacubes()
         assert "nircam_matched" in self.ds.list_datacubes()
@@ -68,25 +54,6 @@ class TestDatacube:
 
     def test_spatial_shape(self):
         assert self.dc.spatial_shape == (221, 172)
-
-    def test_get_slice_by_name_invalid(self):
-        with pytest.raises(ValueError, match="NONEXISTENT"):
-            self.dc.get_slice_by_name("NONEXISTENT")
-
-    def test_get_mean_spectrum_for_mask(self):
-        mask = np.zeros((self.dc.ny, self.dc.nx), dtype=bool)
-        mask[100, 80] = True
-        mask[110, 90] = True
-        mean, std = self.dc.get_mean_spectrum_for_mask(mask)
-        assert mean.shape == (self.dc.n_channels,)
-        assert std.shape == (self.dc.n_channels,)
-        assert np.all(np.isfinite(mean) | np.isnan(mean))
-
-    def test_get_mean_spectrum_for_mask_all_true(self):
-        mask = np.ones((self.dc.ny, self.dc.nx), dtype=bool)
-        mean, _std = self.dc.get_mean_spectrum_for_mask(mask)
-        expected_mean = np.nanmean(self.dc.data, axis=(1, 2))
-        np.testing.assert_allclose(mean, expected_mean)
 
     def test_get_datacube_unknown_name(self):
         with pytest.raises(KeyError, match="Unknown datacube"):

@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 # JWST NIRCam filter central wavelengths in microns.
 # https://jwst-docs.stsci.edu/jwst-near-infrared-camera/nircam-instrumentation/nircam-filters
@@ -29,9 +29,6 @@ NIRCAM_WAVELENGTHS: dict[str, float] = {
     "F480M": 4.834,
 }
 
-# Default RGB filter assignment.
-DEFAULT_RGB: dict[str, str] = {"r": "F200W", "g": "F115W", "b": "F090W"}
-
 
 class JellyscopeConfig(BaseModel):
     """Configuration for the Jellyscope application.
@@ -40,13 +37,10 @@ class JellyscopeConfig(BaseModel):
     or contain subdirectories for multiple datasets.
     """
 
-    data_dir: Path = Field(default_factory=lambda: Path("data"))
+    data_dir: Path = Path("data")
     datacube_file: str = "cut_datacube_nircam.fits"
     datacube_matched_file: str = "cut_datacube_nircam_matched.fits"
     clumps_properties_file: str = "clumps_properties.csv"
     clumps_pixels_file: str = "clumps_pixels.csv"
     host: str = "127.0.0.1"
     port: int = 5000
-    debug: bool = True
-    default_colorscale: str = "Viridis"
-    filter_wavelengths: dict[str, float] = Field(default_factory=lambda: dict(NIRCAM_WAVELENGTHS))
