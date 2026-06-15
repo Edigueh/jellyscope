@@ -1,0 +1,8 @@
+@host = http://127.0.0.1:5000
+
+### Index page (SPA shell)
+# Renders templates/index.html with Jinja2 context:
+#   datasets, default_dataset, default_datacube, datacubes, filters, wavelengths
+# Returns text/html, not JSON.
+GET {{host}}/
+Accept: text/html

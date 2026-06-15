@@ -1,0 +1,61 @@
+@host = http://127.0.0.1:5000
+@dataset = A2744_F1228
+@datacube = nircam
+
+### Single-band viewer figure (F200W = channel 7, clumps 0 and 4 selected)
+# Path params:
+#   dataset_name, datacube_name, channel_index (int, [0, n_channels))
+# Query params:
+#   selected   (str, default "")        — comma-separated clump IDs
+#   colorscale (str, default "Viridis") — Plotly colorscale name
+#   stretch    (Literal, default "log") — "log" | "lupton_asinh" | "power"
+# Errors:
+#   400 if channel_index out of range
+#   422 if stretch not in literal set
+# Response: ViewerResponse
+#   figure: dict (full Plotly figure)
+#   filter_name: str
+GET {{host}}/api/datasets/{{dataset}}/viewer/{{datacube}}/7?selected=0,4&colorscale=Viridis&stretch=log
+Accept: application/json
+
+
+### Single-band viewer with Lupton asinh stretch
+GET {{host}}/api/datasets/{{dataset}}/viewer/{{datacube}}/7?stretch=lupton_asinh
+Accept: application/json
+
+
+### Single-band viewer with power stretch
+GET {{host}}/api/datasets/{{dataset}}/viewer/{{datacube}}/7?stretch=power
+Accept: application/json
+
+
+### Single-band viewer — out-of-range channel (expect 400)
+GET {{host}}/api/datasets/{{dataset}}/viewer/{{datacube}}/999
+Accept: application/json
+
+
+### RGB composite (default percentile_asinh stretch)
+# Mirrors DEFAULT_RGB in config.py: R=F200W (7), G=F115W (2), B=F090W (1).
+# Query params:
+#   r, g, b      (int, required)         — channel indices, validated [0, n_channels)
+#   selected     (str, default "")
+#   method       (Literal, default "percentile_asinh") — also "lupton"
+#   softening    (float, default 8.0)    — Lupton Q parameter (ignored when method != "lupton")
+# Errors:
+#   400 if any of r/g/b out of range
+#   422 if method not in literal set
+# Response: RGBViewerResponse
+#   figure: dict
+#   r_filter, g_filter, b_filter: str
+GET {{host}}/api/datasets/{{dataset}}/viewer/{{datacube}}/rgb?r=7&g=2&b=1
+Accept: application/json
+
+
+### RGB composite with Lupton method and custom softening
+GET {{host}}/api/datasets/{{dataset}}/viewer/{{datacube}}/rgb?r=19&g=10&b=0&method=lupton&softening=8.0
+Accept: application/json
+
+
+### RGB composite with selected clumps highlighted
+GET {{host}}/api/datasets/{{dataset}}/viewer/{{datacube}}/rgb?r=7&g=2&b=1&selected=0,4
+Accept: application/json

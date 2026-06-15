@@ -1,0 +1,28 @@
+@host = http://127.0.0.1:5000
+@dataset = A2744_F1228
+@datacube = nircam
+
+### List datasets
+# Response: DatasetsResponse
+#   datasets: list[str]
+#   default: str
+GET {{host}}/api/datasets
+Accept: application/json
+
+
+### List datacubes for a dataset
+# 404 when dataset_name unknown.
+# Response: DatacubesResponse
+#   datacubes: list[str]
+GET {{host}}/api/datasets/{{dataset}}/datacubes
+Accept: application/json
+
+
+### List filters for a datacube
+# Response: FiltersResponse
+#   filters: list[FilterInfo]
+#     index: int
+#     name: str         (e.g. "F200W")
+#     wavelength: float (microns; 0.0 if not in NIRCAM_WAVELENGTHS)
+GET {{host}}/api/datasets/{{dataset}}/filters/{{datacube}}
+Accept: application/json

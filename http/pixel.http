@@ -1,0 +1,16 @@
+@host = http://127.0.0.1:5000
+@dataset = A2744_F1228
+
+### Which clump (if any) does pixel (72, 20) belong to?
+# Path params:
+#   dataset_name, x (int), y (int)
+# Response: PixelClumpResponse
+#   clump_id: int | null  (null when pixel does not belong to any clump)
+# Backed by ClumpCatalog._clump_map — O(1) lookup.
+GET {{host}}/api/datasets/{{dataset}}/pixel/72/20/clump
+Accept: application/json
+
+
+### Pixel with no clump (returns clump_id: null)
+GET {{host}}/api/datasets/{{dataset}}/pixel/0/0/clump
+Accept: application/json

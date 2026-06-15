@@ -12,13 +12,20 @@ A dataset is a collection of FITS datacubes and CSV clump catalogs for one galax
 
 Place your files in a subdirectory of `data/`:
 
-```plaintext
-data/
-└── my_new_galaxy/                      # Becomes dataset name "my_new_galaxy"
-    ├── datacube.fits                   # 3D FITS: (n_filters, ny, nx), float64
-    ├── datacube_matched.fits           # Optional: PSF-matched version
-    ├── clumps_properties.csv           # Clump properties (same column names)
-    └── clumps_pixels.csv               # Clump pixel coordinates
+```mermaid
+flowchart LR
+    data(["data/"])
+    galaxy["my_new_galaxy/"]
+    fits1["datacube.fits"]
+    fits2["datacube_matched.fits"]
+    csv1["clumps_properties.csv"]
+    csv2["clumps_pixels.csv"]
+
+    data --> galaxy
+    galaxy --> fits1
+    galaxy --> fits2
+    galaxy --> csv1
+    galaxy --> csv2
 ```
 
 `DataStore` discovers all subdirectories at startup; the first (alphabetical) becomes the `default_dataset`. Add more subdirectories to expose more datasets — no code changes required.
@@ -289,15 +296,22 @@ Update the version in two places:
 
 `DataStore` already discovers multiple galaxies as subdirectories of `config.data_dir`. Drop your data in:
 
-```plaintext
-data/
-├── jw2736-jfg1/
-│   ├── datacube.fits
-│   ├── datacube_matched.fits
-│   ├── clumps_properties.csv
-│   └── clumps_pixels.csv
-├── jw2736-jfg2/
-│   └── ...
+```mermaid
+flowchart LR
+    data(["data/"])
+    g1["jw2736-jfg1/"]
+    g1f1["datacube.fits"]
+    g1f2["datacube_matched.fits"]
+    g1f3["clumps_properties.csv"]
+    g1f4["clumps_pixels.csv"]
+    g2["jw2736-jfg2/"]
+
+    data --> g1
+    data --> g2
+    g1 --> g1f1
+    g1 --> g1f2
+    g1 --> g1f3
+    g1 --> g1f4
 ```
 
 Each subdirectory is loaded as a `Dataset` named after the directory. The first (alphabetical) becomes `default_dataset`. A flat layout (files directly under `data/`) is loaded as a single dataset called `default` for backward compatibility.

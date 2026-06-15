@@ -6,87 +6,39 @@ This document describes the overall architecture of Jellyscope, how data flows t
 
 Jellyscope follows a layered architecture where each layer only depends on layers below it:
 
-```plaintext
-┌─────────────────────────────────────────────────┐
-│                    Browser                      │
-│  Plotly.js renders figures, user clicks/selects │
-└──────────────────────┬──────────────────────────┘
-                       │ HTTP (JSON)
-┌──────────────────────▼──────────────────────────┐
-│             Web Layer (FastAPI)                 │
-│  routes.py — REST endpoints                     │
-│  templates/index.html — SPA page                │
-│  static/app.js — frontend controller            │
-└──────────┬──────────────────────────────────────┘
-           │
-┌──────────▼─────────────────────────────────────┐
-│  Visualization                                 │
-│  image_viewer.py — heatmap + clump overlays    │
-│  rgb_composite.py — RGB color composite        │
-│  properties_panel.py — clump property tables   │
-└──────────┬─────────────────────────────────────┘
-           │
-┌──────────▼─────────────────────────────────────┐
-│  API Contract (model/)                         │
-│  schemas.py — 15 Pydantic request/response     │
-│              models                            │
-└──────────┬─────────────────────────────────────┘
-           │
-┌──────────▼─────────────────────────────────────┐
-│                Data Layer                      │
-│  data_store.py    — DataStore + Dataset        │
-│                     (multi-dataset, singleton) │
-│  model/datacube.py — DataCube (FITS I/O)       │
-│  model/clumps.py  — ClumpCatalog (CSV + masks) │
-│  config.py        — JellyscopeConfig           │
-└──────────────────────┬─────────────────────────┘
-                       │
-┌──────────────────────▼──────────────────────────┐
-│              Data Files                         │
-│  data_dir/<dataset>/*.fits  *.csv               │
-│  (subdirectories = datasets; flat layout = the  │
-│   single "default" dataset for backward compat) │
-└─────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    browser["Browser"]
+    web["Web layer"]
+    viz["Visualization"]
+    schemas["API contract"]
+    data["Data layer"]
+    files["Data files"]
+
+    browser -->|"HTTP (JSON)"| web
+    web --> viz
+    viz --> schemas
+    schemas --> data
+    data --> files
 ```
 
 ## Data Flow: From FITS to Browser
 
 This is the complete path that data travels from a FITS file on disk to a pixel rendered in the user's browser:
 
-```plaintext
-1. FITS file on disk
-   │  cut_datacube_nircam.fits (20 x 221 x 172, float64)
-   │
-2. DataCube.__init__()                    [data/model/datacube.py]
-   │  astropy.io.fits.open() → reads data array + header + WCS
-   │  Parses FILTER1..FILTER20 from header → filter_names list
-   │
-3. DataStore.__init__()                   [data/data_store.py]
-   │  Loads both datacubes + ClumpCatalog into memory (~12MB total)
-   │  Singleton: loaded once at app startup, shared across requests
-   │
-4. FastAPI request arrives
-   │  GET /api/datasets/{dataset_name}/viewer/nircam/7?selected=0,3
-   │
-5. routes.get_viewer_figure()             [web/routes.py]
-   │  Parses URL params → calls build_viewer_figure()
-   │
-6. build_viewer_figure()                  [visualization/image_viewer.py]
-   │  a) DataCube.get_slice_by_channel_index(7) → 2D numpy array (221 x 172)
-   │  b) _log_stretch() → normalize + log stretch to handle dynamic range
-   │  c) create_galaxy_heatmap() → Plotly heatmap trace dict
-   │  d) create_clump_boundary_traces() → 23 scatter traces (polygons)
-   │  e) create_centroid_markers() → scatter trace with clump labels
-   │  f) Assembles {data: [...], layout: {...}} Plotly figure dict
-   │
-7. FastAPI JSON response
-   │  Python dict → JSON string → HTTP response
-   │
-8. Browser fetch() in app.js              [web/static/app.js]
-   │  Receives JSON → Plotly.react(viewer, fig.data, fig.layout)
-   │
-9. Plotly.js renders
-   │  Heatmap + boundary polygons + centroid markers → interactive SVG/WebGL
+```mermaid
+flowchart TD
+    s1["FITS file on disk"]
+    s2["Read datacube and parse filters"]
+    s3["Cache datacubes and clumps in memory"]
+    s4["Receive viewer request"]
+    s5["Dispatch to figure builder"]
+    s6["Build figure dict"]
+    s7["Serialize JSON response"]
+    s8["Browser receives figure"]
+    s9["Plotly renders interactive image"]
+
+    s1 --> s2 --> s3 --> s4 --> s5 --> s6 --> s7 --> s8 --> s9
 ```
 
 ## User Interaction Flows
@@ -95,39 +47,38 @@ This is the complete path that data travels from a FITS file on disk to a pixel 
 
 When the user clicks on the galaxy image and hits a pixel that belongs to a clump:
 
-```plaintext
-Browser                          Server
-───────                          ──────
-plotly_click event
- → extract (x, y) from point
- │
- ├── GET /api/datasets/{dataset_name}/pixel/{x}/{y}/clump ─→ ClumpCatalog.get_clump_id_at_pixel(x, y)
- │                                        Uses _clump_map[y, x] → O(1) lookup
- ←── { "clump_id": 4 } ───────────────┘
- │
- ├── GET /api/datasets/{dataset_name}/clumps/4 ───────────→ format_clump_properties(clump)
- │                                      get_boundary_coords(4)
- ←── { properties: {...}, boundary: [...] }
- │
- └── Updates UI:
-     1. Properties panel → HTML table
-     2. Viewer → re-renders with clump highlighted (red border)
+```mermaid
+sequenceDiagram
+    participant Browser
+    participant Server
+
+    Note over Browser: User clicks pixel
+
+    Browser->>Server: Pixel lookup
+    Note over Server: Resolve clump at pixel
+    Server-->>Browser: Clump id
+
+    Browser->>Server: Clump detail
+    Note over Server: Format properties and boundary
+    Server-->>Browser: Properties and boundary
+
+    Note over Browser: Update properties panel and re-render viewer
 ```
 
 ### Flow 2: Change Filter (Slider)
 
-```plaintext
-Browser                          Server
-───────                          ──────
-slider input event
- → state.channel = newValue
- → update filter label text
- │
- └── GET /api/datasets/{dataset_name}/viewer/nircam/{ch} ─→ build_viewer_figure(datacube, ch, clumps)
-     ?selected=0,3                       Same pipeline: slice → stretch → heatmap
- ←── { figure: {...} } ──────────────┘
- │
- └── Plotly.react() → updates heatmap, keeps boundaries intact
+```mermaid
+sequenceDiagram
+    participant Browser
+    participant Server
+
+    Note over Browser: User moves filter slider
+
+    Browser->>Server: Viewer figure for channel
+    Note over Server: Slice, stretch, build heatmap
+    Server-->>Browser: Updated figure
+
+    Note over Browser: Re-render heatmap, keep overlays
 ```
 
 ## Key Technical Decisions
@@ -242,28 +193,35 @@ All API endpoints are namespaced under `/api/datasets/{dataset_name}/...` so mul
 
 ## Module Dependency Graph
 
-```plaintext
-config.py (no dependencies — Pydantic BaseModel)
-    ↑
-model/datacube.py (imports: astropy, numpy)
-    ↑
-model/clumps.py (imports: pandas, numpy, scipy, pydantic)
-    ↑
-data_store.py (imports: config, model/datacube, model/clumps)
-    ↑
-    ├── model/schemas.py (imports: pydantic — request/response models)
-    ├── visualization/image_viewer.py (imports: data_store/DataCube, model/clumps)
-    ├── visualization/rgb_composite.py (imports: numpy, PIL, data_store/DataCube,
-    │                                            model/clumps, image_viewer helpers)
-    ├── visualization/properties_panel.py (imports: model/clumps)
-    │       ↑
-    └── web/routes.py (imports: data_store, model/schemas,
-                                visualization/image_viewer, rgb_composite,
-                                properties_panel)
-            ↑
-        web/__init__.py (imports: config, data_store, routes)
-            ↑
-        cli.py (imports: config, web)
+```mermaid
+flowchart BT
+    config["config.py<br/><i>(no deps — Pydantic BaseModel)</i>"]
+    datacube["model/datacube.py<br/><i>astropy, numpy</i>"]
+    clumps["model/clumps.py<br/><i>pandas, numpy, scipy, pydantic</i>"]
+    store["data_store.py<br/><i>config, datacube, clumps</i>"]
+    schemas["model/schemas.py<br/><i>pydantic</i>"]
+    image_viewer["visualization/image_viewer.py<br/><i>DataCube, clumps</i>"]
+    rgb["visualization/rgb_composite.py<br/><i>numpy, PIL, DataCube, clumps, image_viewer</i>"]
+    props["visualization/properties_panel.py<br/><i>clumps</i>"]
+    routes["web/routes.py<br/><i>data_store, schemas, viz/*</i>"]
+    web_init["web/__init__.py<br/><i>config, data_store, routes</i>"]
+    cli["cli.py<br/><i>config, web</i>"]
+
+    datacube --> config
+    clumps --> config
+    store --> datacube
+    store --> clumps
+    schemas --> store
+    image_viewer --> store
+    rgb --> store
+    rgb --> image_viewer
+    props --> clumps
+    routes --> schemas
+    routes --> image_viewer
+    routes --> rgb
+    routes --> props
+    web_init --> routes
+    cli --> web_init
 ```
 
 The key insight is that `config.py` and the data layer have zero upward dependencies, making them usable as standalone libraries without the web layer.

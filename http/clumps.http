@@ -1,0 +1,51 @@
+@host = http://127.0.0.1:5000
+@dataset = A2744_F1228
+@clump_id = 4
+
+### List all clumps
+# Query params:
+#   component (str | null, default null) — e.g. "disk" or "outside"
+#   inside    (bool | null, default null)
+# Response: ClumpsListResponse
+#   clumps: list[ClumpListItem]
+#     clump_id: int
+#     x0, y0: float (rounded to 2 decimals)
+#     area_pix: int
+#     component: str
+#     inside: bool
+GET {{host}}/api/datasets/{{dataset}}/clumps
+Accept: application/json
+
+
+### List only disk clumps
+GET {{host}}/api/datasets/{{dataset}}/clumps?component=disk
+Accept: application/json
+
+
+### List clumps outside the disk
+GET {{host}}/api/datasets/{{dataset}}/clumps?component=outside&inside=false
+Accept: application/json
+
+
+### Pairwise angular separations between all clump centroids
+# Uses cached SkyCoord centroids from ClumpCatalog.attach_skycoords.
+# Errors:
+#   422 when the dataset's WCS lacks celestial axes (RA/Dec unavailable).
+# Response: ClumpSeparationsResponse
+#   distance_mpc: float | null  (always null until galaxy distance configured)
+#   pairs: list[ClumpSeparation]
+#     clump_a, clump_b: int
+#     sep_arcsec: float
+#     sep_pc: float | null
+GET {{host}}/api/datasets/{{dataset}}/clumps/separations
+Accept: application/json
+
+
+### Single clump detail (properties + boundary polygon)
+# Path params:
+#   dataset_name, clump_id (int)
+# Response: ClumpDetailResponse
+#   properties: dict[str, Any]   (formatted for UI table)
+#   boundary: list[list[float]]  (polygon vertices, closed loop)
+GET {{host}}/api/datasets/{{dataset}}/clumps/{{clump_id}}
+Accept: application/json

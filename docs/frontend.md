@@ -29,22 +29,24 @@ These are exposed to JavaScript as `DATASETS`, `DEFAULT_DATASET`, `DEFAULT_DATAC
 
 The page uses CSS Grid with two columns:
 
-```plaintext
-┌──────────────────────────────────────────────────────────────────────┐
-│  HEADER: "Jellyscope — JWST Jellyfish Galaxy Explorer"               │
-├────────────────────────────────────────┬─────────────────────────────┤
-│                                        │  PROPERTIES PANEL           │
-│  VIEWER CONTROLS                       │  (clump info table)         │
-│  [Datacube ▼] [Stretch ▼]             ├─────────────────────────────┤
-│  [Single|RGB] [Filter/RGB controls]    │  CLUMP LIST                 │
-│  [Pan|Rect|Lasso] [Centroids]          │  (checkboxes with badges)   │
-│                                        │  [Filter: All ▼]            │
-│  GALAXY VIEWER                         │                             │
-│  (Plotly heatmap or RGB image)         │                             │
-│  172 x 221 px image                    │                             │
-│  with clump overlays                   │                             │
-│                                        │                             │
-└────────────────────────────────────────┴─────────────────────────────┘
+```mermaid
+flowchart TB
+    header["Header"]
+
+    subgraph leftcol["Left column"]
+        controls["Viewer controls"]
+        viewer["Galaxy viewer"]
+        controls --> viewer
+    end
+
+    subgraph rightcol["Right column"]
+        properties["Properties panel"]
+        clumplist["Clump list"]
+        properties --> clumplist
+    end
+
+    header --> leftcol
+    header --> rightcol
 ```
 
 Left column: `1fr` (flexible) — the galaxy viewer expands to fill available space.
@@ -134,26 +136,28 @@ The RGB defaults come from `DEFAULT_RGB_FILTERS` (mirrors `DEFAULT_RGB` in `src/
 
 ### Initialization Flow
 
-```plaintext
-DOMContentLoaded
-    └── init()
-        ├── populateRGBSelects()  → fill R/G/B dropdowns; calls updateRGBFilterOptions() at end
-        ├── loadClumpList()       → GET /api/datasets/{state.dataset}/clumps → populate clump list
-        ├── updateFilterLabel()   → set initial status label
-        ├── updateRGBMethodUI()   → show/hide Q slider based on state.rgbMethod
-        ├── renderViewer()        → GET /api/datasets/{state.dataset}/viewer/... → render Plotly figure
-        └── setupEventListeners()
-            ├── datacube-select    → onChange → renderViewer()
-            ├── filter-slider      → onInput → updateFilterLabel() + renderViewer()
-            ├── colorscale-select  → onChange → renderViewer()
-            ├── stretch-select     → onChange → renderViewer()
-            ├── view-btn (Single/RGB) → onClick → updateViewModeUI() + renderViewer()
-            ├── rgb-r/g/b          → onChange → updateRGBFilterOptions() + updateFilterLabel() + renderViewer()
-            ├── rgb-method         → onChange → updateRGBMethodUI() + renderViewer()
-            ├── rgb-q              → onInput → debounced(renderViewer, 300ms)
-            ├── mode buttons       → onClick → Plotly.relayout(dragmode)
-            ├── btn-centroids      → onClick → toggle + renderViewer()
-            └── clump-filter       → onChange → loadClumpList()
+```mermaid
+flowchart TD
+    dom["DOMContentLoaded"] --> init["Initialize app"]
+
+    init --> populate["Populate RGB selects"]
+    init --> loadclumps["Load clump list"]
+    init --> updlabel["Set filter label"]
+    init --> updmethod["Toggle Lupton controls"]
+    init --> render["Render viewer"]
+    init --> setup["Wire event listeners"]
+
+    setup --> ev_dc["Datacube change"]
+    setup --> ev_slider["Filter slider"]
+    setup --> ev_color["Colorscale change"]
+    setup --> ev_stretch["Stretch change"]
+    setup --> ev_view["View mode toggle"]
+    setup --> ev_rgb["RGB band change"]
+    setup --> ev_method["RGB method change"]
+    setup --> ev_q["Lupton softening"]
+    setup --> ev_mode["Drag mode buttons"]
+    setup --> ev_centroids["Centroid toggle"]
+    setup --> ev_filter["Clump filter"]
 ```
 
 All API URLs are namespaced under `/api/datasets/${state.dataset}/`. The active dataset is read from the template-injected `DEFAULT_DATASET` constant at startup.
