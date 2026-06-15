@@ -51,17 +51,13 @@ serve:
 serve-dev:
     uv run uvicorn jellyscope.web:create_app --factory --reload --host 127.0.0.1 --port 5000
 
-# Build the Docker image
+# Build the Docker image (tagged with pyproject version)
 docker-build:
-    docker compose build
-
-# Seed the jellyscope-data volume from local ./data (run once)
-docker-seed:
-    docker run --rm -v jellyscope-data:/data -v "$PWD/data":/src alpine sh -c "cp -r /src/. /data/"
+    JELLYSCOPE_VERSION=$(uv version --short 2>/dev/null || echo dev) docker compose build
 
 # Start the containerized service (detached)
 docker-up:
-    docker compose up -d
+    JELLYSCOPE_VERSION=$(uv version --short 2>/dev/null || echo dev) docker compose up -d
 
 # Stop and remove the containerized service
 docker-down:
@@ -77,11 +73,11 @@ docker-restart:
 
 # Rebuild image and recreate container (picks up code changes; uses layer cache)
 docker-reload:
-    docker compose up -d --build
+    JELLYSCOPE_VERSION=$(uv version --short 2>/dev/null || echo dev) docker compose up -d --build
 
 # Start dev container with bind-mounted src and uvicorn --reload (hot reload)
 docker-dev:
-    docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+    JELLYSCOPE_VERSION=$(uv version --short 2>/dev/null || echo dev) docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 
 # Clean build artifacts
 clean:

@@ -50,19 +50,18 @@ Alternatively, run Jellyscope as a containerized service via Docker Compose. No 
 
 ```bash
 just docker-build       # docker compose build
-just docker-seed        # copy ./data into the jellyscope-data volume (one-time)
 just docker-up          # docker compose up -d
 ```
 
 Then open <http://localhost:5000>.
 
-The data directory lives in a Docker-managed named volume (`jellyscope-data`) mounted read-only at `/data` inside the container. Override CLI flags ad-hoc:
+The local `./data/` directory is bind-mounted read-only at `/data` inside the container. Override CLI flags ad-hoc:
 
 ```bash
 docker compose run --rm jellyscope --help
 ```
 
-Tear down with `just docker-down` (add `-v` to the underlying `docker compose down` call to also remove the data volume).
+Tear down with `just docker-down`.
 
 ## Data Format
 
@@ -89,7 +88,6 @@ just check         # Run ALL checks (lint + format + typecheck + tests)
 just spellcheck    # Check for typos in code/docs
 just serve         # Start the dev server
 just docker-build  # Build the Docker image
-just docker-seed   # Copy ./data into the jellyscope-data volume (one-time)
 just docker-up     # Start the containerized service
 just docker-down   # Stop the containerized service
 just docker-logs   # Tail container logs

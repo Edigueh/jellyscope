@@ -1,9 +1,13 @@
+# Dev override layered on top of docker-compose.yml via `just docker-dev`.
+#
+# Why the entrypoint is replaced: the `jellyscope` console script does not expose
+# a --reload flag, and uvicorn auto-reload requires invoking uvicorn directly with
+# --reload-dir. Source is bind-mounted read-only so edits trigger reload without rebuild.
+
 services:
   jellyscope:
     volumes:
       - ./src:/app/src:ro
-      - ./data:/app/data:ro
-    working_dir: /app
     entrypoint: ["uvicorn"]
     command:
       - "jellyscope.web:create_app"

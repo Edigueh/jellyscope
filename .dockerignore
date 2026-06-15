@@ -1,14 +1,4 @@
-.git
-.gitignore
-.venv
-venv
-env
-.env
-.ruff_cache
-.mypy_cache
-.pytest_cache
-htmlcov
-.coverage
+# python
 __pycache__
 *.py[cod]
 *$py.class
@@ -17,12 +7,33 @@ __pycache__
 .eggs
 dist
 build
+.venv
+venv
+env
+
+# tooling
+.git
+.gitignore
+.ruff_cache
+.mypy_cache
+.pytest_cache
+.pre-commit-config.yaml
+htmlcov
+.coverage
 .DS_Store
+.github/
+.claude/
+
+# project
+.env
+.env.*
+docker-compose*.yml
+justfile
+
+# data & docs
 data/
 docs/
 tests/
 *.fits
-Dockerfile
-docker-compose.yml
-.dockerignore
-.pre-commit-config.yaml
+*.md
+!README.md

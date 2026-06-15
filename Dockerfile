@@ -16,6 +16,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 FROM python:3.13-slim AS runtime
 
+ARG JELLYSCOPE_VERSION=dev
+LABEL org.opencontainers.image.version="${JELLYSCOPE_VERSION}"
+
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/app/.venv/bin:$PATH" \
@@ -34,6 +37,9 @@ RUN mkdir -p /data && chown -R jellyscope:jellyscope /data
 USER jellyscope
 
 EXPOSE 5000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/').read()"
 
 ENTRYPOINT ["jellyscope"]
 CMD ["--host", "0.0.0.0", "--port", "5000", "--data-dir", "/data"]
