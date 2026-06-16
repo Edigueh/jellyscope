@@ -635,15 +635,70 @@ function _relayoutClampGuard(div, eventData) {
     });
 }
 
+// Clamp every layout.selections entry to image FOV. Plotly stores rect/lasso
+// selections in data coords and never clips them to minallowed/maxallowed,
+// so a resize handle dragged past the edge or a zoom that shrinks the
+// viewport leaves the shape spilling over the axis chrome.
+function _clampSelections(viewer) {
+    const selections = viewer.layout?.selections;
+    if (!selections?.length) return;
+    const xa = _readBounds(viewer, "xaxis");
+    const ya = _readBounds(viewer, "yaxis");
+    if (!xa || !ya) return;
+
+    const cx = (v) => Math.min(xa.max, Math.max(xa.min, v));
+    const cy = (v) => Math.min(ya.max, Math.max(ya.min, v));
+
+    let changed = false;
+    const next = selections.map((s) => {
+        const c = {...s};
+        if (s.type === "rect") {
+            const x0 = cx(s.x0);
+            const x1 = cx(s.x1);
+            const y0 = cy(s.y0);
+            const y1 = cy(s.y1);
+            if (x0 !== s.x0 || x1 !== s.x1 || y0 !== s.y0 || y1 !== s.y1) {
+                changed = true;
+                c.x0 = x0;
+                c.x1 = x1;
+                c.y0 = y0;
+                c.y1 = y1;
+            }
+        } else if (s.path) {
+            // Lasso path: "M x,y L x,y L ... Z" — clamp each vertex.
+            const clamped = s.path.replace(
+                /([ML])\s*([-\d.eE+]+)\s*,\s*([-\d.eE+]+)/g,
+                (_, cmd, x, y) => `${cmd}${cx(Number.parseFloat(x))},${cy(Number.parseFloat(y))}`,
+            );
+            if (clamped !== s.path) {
+                changed = true;
+                c.path = clamped;
+            }
+        }
+        return c;
+    });
+    if (!changed) return;
+    if (viewer.__clamping) return;
+
+    viewer.__clamping = true;
+    Plotly.relayout(viewer, {selections: next}).finally(() => {
+        viewer.__clamping = false;
+    });
+}
+
 function attachZoomOutLock(viewer) {
     if (viewer.__zoomOutLockAttached) return;
     viewer.addEventListener("wheel", _zoomOnWheel, {capture: true, passive: false});
-    viewer.on("plotly_relayout", (ed) => _relayoutClampGuard(viewer, ed));
+    viewer.on("plotly_relayout", (ed) => {
+        _relayoutClampGuard(viewer, ed);
+        _clampSelections(viewer);
+    });
     // plotly_relayouting fires every frame during a drag (pan, drag-zoom).
     // For drag-zoom rectangles it carries xaxis.range and we clamp; for pan
     // Plotly translates the SVG via CSS transform and never emits range keys
     // until mouseup, so the custom pan handler below replaces Plotly's pan.
     viewer.on("plotly_relayouting", (ed) => _relayoutClampGuard(viewer, ed));
+    viewer.on("plotly_selected", () => _clampSelections(viewer));
 
     // Custom pan implementation: takes over mouse drag when dragmode is 'pan',
     // updating xaxis/yaxis range every frame with the FOV clamp applied. This
