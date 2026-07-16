@@ -64,6 +64,8 @@ def test_get_clump_detail(client):
     data = resp.json()
     assert "properties" in data
     assert "boundary" in data
+    assert isinstance(data["properties"]["entries"], list)
+    assert len(data["properties"]["entries"]) > 0
 
 
 def test_pixel_clump_lookup(client):
@@ -160,12 +162,15 @@ def test_clump_separations_matches_skycoord(client):
     from astropy import units as u
     from astropy.coordinates import SkyCoord
 
-    detail_a = client.get(f"{BASE}/clumps/0").json()
-    detail_b = client.get(f"{BASE}/clumps/1").json()
-    ra_a = float(detail_a["properties"]["RA (deg)"])
-    dec_a = float(detail_a["properties"]["Dec (deg)"])
-    ra_b = float(detail_b["properties"]["RA (deg)"])
-    dec_b = float(detail_b["properties"]["Dec (deg)"])
+    def _lookup(entries: list[dict], label: str) -> str:
+        return next(e["value"] for e in entries if e["label"] == label)
+
+    detail_a = client.get(f"{BASE}/clumps/0").json()["properties"]["entries"]
+    detail_b = client.get(f"{BASE}/clumps/1").json()["properties"]["entries"]
+    ra_a = float(_lookup(detail_a, "RA (deg)"))
+    dec_a = float(_lookup(detail_a, "Dec (deg)"))
+    ra_b = float(_lookup(detail_b, "RA (deg)"))
+    dec_b = float(_lookup(detail_b, "Dec (deg)"))
     expected = (
         SkyCoord(ra=ra_a * u.deg, dec=dec_a * u.deg)
         .separation(SkyCoord(ra=ra_b * u.deg, dec=dec_b * u.deg))
@@ -181,8 +186,9 @@ def test_clump_separations_matches_skycoord(client):
 
 def test_clump_detail_has_radec(client):
     resp = client.get(f"{BASE}/clumps/0")
-    props = resp.json()["properties"]
-    assert "RA (deg)" in props
-    assert "Dec (deg)" in props
-    assert props["RA (deg)"] != "—"
-    assert props["Dec (deg)"] != "—"
+    entries = resp.json()["properties"]["entries"]
+    by_label = {e["label"]: e["value"] for e in entries}
+    assert "RA (deg)" in by_label
+    assert "Dec (deg)" in by_label
+    assert by_label["RA (deg)"] != "—"
+    assert by_label["Dec (deg)"] != "—"

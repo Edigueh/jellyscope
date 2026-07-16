@@ -1,6 +1,6 @@
 """REST API endpoints and page routes."""
 
-from typing import Annotated, Any, Literal
+from typing import Annotated, Literal
 
 import numpy as np
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -102,7 +102,9 @@ def list_filters(dataset_name: str, datacube_name: str) -> FiltersResponse:
 
 # Image viewer.
 @router.get(
-    "/api/datasets/{dataset_name}/viewer/{datacube_name}/rgb", response_model=RGBViewerResponse
+    "/api/datasets/{dataset_name}/viewer/{datacube_name}/rgb",
+    response_model=RGBViewerResponse,
+    response_model_exclude_none=True,
 )
 def get_rgb_viewer_figure(
     dataset_name: str,
@@ -126,7 +128,7 @@ def get_rgb_viewer_figure(
     selected_ids: list[int] = (
         [int(i) for i in selected.split(",") if i.strip()] if selected else []
     )
-    figure: dict[str, Any] = build_rgb_figure(
+    figure = build_rgb_figure(
         dc, r, g, b, clumps, selected_ids, method=method, softening=softening
     )
     return RGBViewerResponse(
@@ -140,6 +142,7 @@ def get_rgb_viewer_figure(
 @router.get(
     "/api/datasets/{dataset_name}/viewer/{datacube_name}/{channel_index}",
     response_model=ViewerResponse,
+    response_model_exclude_none=True,
 )
 def get_viewer_figure(
     dataset_name: str,
@@ -159,9 +162,7 @@ def get_viewer_figure(
     selected_ids: list[int] = (
         [int(i) for i in selected.split(",") if i.strip()] if selected else []
     )
-    figure: dict[str, Any] = build_viewer_figure(
-        dc, channel_index, clumps, selected_ids, colorscale, stretch
-    )
+    figure = build_viewer_figure(dc, channel_index, clumps, selected_ids, colorscale, stretch)
     return ViewerResponse(figure=figure, filter_name=dc.filter_names[channel_index])
 
 
@@ -245,10 +246,7 @@ def get_clump(dataset_name: str, clump_id: int) -> ClumpDetailResponse:
     clump = clumps.get_clump_by_id(clump_id)
     boundary = clumps.get_boundary_coords(clump_id)
     props = format_clump_properties(clump)
-    return ClumpDetailResponse(
-        properties=props,
-        boundary=[list(coord) for coord in boundary],
-    )
+    return ClumpDetailResponse(properties=props, boundary=boundary)
 
 
 # Pixel Interaction.

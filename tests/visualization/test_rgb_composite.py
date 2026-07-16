@@ -164,7 +164,7 @@ class TestPercentileAsinhComposite:
 class TestBuildRGBFigure:
     """Figure assembly: invisible heatmap click target + layout.images PNG."""
 
-    def _build(self, store: DataStore, method: str = "percentile_asinh") -> dict:
+    def _build(self, store: DataStore, method: str = "percentile_asinh"):
         dataset_name = store.list_datasets()[0]
         dataset = store.get_dataset(dataset_name)
         datacube_name = dataset.list_datacubes()[0]
@@ -183,28 +183,28 @@ class TestBuildRGBFigure:
 
     def test_data0_is_invisible_heatmap(self, store: DataStore):
         fig = self._build(store)
-        d0 = fig["data"][0]
-        assert d0["type"] == "heatmap"
-        assert d0["opacity"] == 0
-        assert d0["showscale"] is False
+        d0 = fig.data[0]
+        assert d0.type == "heatmap"
+        assert d0.opacity == 0
+        assert d0.showscale is False
 
     def test_layout_images_png_annotation(self, store: DataStore):
         fig = self._build(store)
-        images = fig["layout"]["images"]
+        images = fig.layout.images
         assert len(images) == 1
         img = images[0]
-        assert img["xref"] == "x"
-        assert img["yref"] == "y"
-        assert img["sizing"] == "stretch"
+        assert img.xref == "x"
+        assert img.yref == "y"
+        assert img.sizing == "stretch"
         # Image is centered on (0, 0) in arcsec offsets.
-        assert img["x"] < 0
-        assert img["y"] < 0
-        assert img["source"].startswith("data:image/png;base64,")
+        assert img.x < 0
+        assert img.y < 0
+        assert img.source.startswith("data:image/png;base64,")
 
     def test_no_yaxis_autorange_reversed(self, store: DataStore):
         fig = self._build(store)
-        yaxis = fig["layout"]["yaxis"]
-        assert yaxis.get("autorange") != "reversed"
+        # autorange is bool now; reversed mode would have been a special string.
+        assert fig.layout.yaxis.autorange is False
 
     def test_png_dimensions_match_datacube(self, store: DataStore):
         from jellyscope.data.model.coordinates import pixel_scale_arcsec
@@ -214,11 +214,11 @@ class TestBuildRGBFigure:
         datacube = dataset.get_datacube(dataset.list_datacubes()[0])
         ny, nx = datacube.spatial_shape
         sec_pix = pixel_scale_arcsec(datacube.wcs)
-        img = fig["layout"]["images"][0]
-        assert img["sizex"] == pytest.approx(nx * sec_pix, rel=1e-9)
-        assert img["sizey"] == pytest.approx(ny * sec_pix, rel=1e-9)
+        img = fig.layout.images[0]
+        assert img.sizex == pytest.approx(nx * sec_pix, rel=1e-9)
+        assert img.sizey == pytest.approx(ny * sec_pix, rel=1e-9)
         # Decode PNG and confirm dimensions still match the source pixel grid.
-        b64 = img["source"].removeprefix("data:image/png;base64,")
+        b64 = img.source.removeprefix("data:image/png;base64,")
         png_bytes = base64.b64decode(b64)
         png = PILImage.open(io.BytesIO(png_bytes))
         assert png.size == (nx, ny)
@@ -238,28 +238,28 @@ class TestBuildRGBFigure:
         ny, _ = datacube.spatial_shape
         sec_pix = pixel_scale_arcsec(datacube.wcs)
         cy = (ny - 1) / 2.0
-        centroids = fig["data"][-1]
+        centroids = fig.data[-1]
         expected_ys = [(c.y0 - cy) * sec_pix for c in clump_list]
-        for got, exp in zip(centroids["y"], expected_ys, strict=True):
+        for got, exp in zip(centroids.y, expected_ys, strict=True):
             assert got == pytest.approx(exp, rel=1e-9, abs=1e-12)
 
     def test_data_order_preserves_clickable_first(self, store: DataStore):
         """app.js relies on data[0] being the click target; centroids are last."""
         fig = self._build(store)
-        assert fig["data"][0]["type"] == "heatmap"
+        assert fig.data[0].type == "heatmap"
         # Last trace must be the centroid scatter so fig.data.pop() in JS toggles it.
-        assert fig["data"][-1].get("name") == "Centroids"
+        assert fig.data[-1].name == "Centroids"
 
     def test_lupton_method_path(self, store: DataStore):
         fig = self._build(store, method="lupton")
-        assert fig["data"][0]["type"] == "heatmap"
-        assert fig["layout"]["images"][0]["source"].startswith("data:image/png;base64,")
+        assert fig.data[0].type == "heatmap"
+        assert fig.layout.images[0].source.startswith("data:image/png;base64,")
 
     def test_image_yanchor_bottom(self, store: DataStore):
         """Image bottom must anchor at y=0 so it occupies y∈[0, ny] with overlays."""
         fig = self._build(store)
-        img = fig["layout"]["images"][0]
-        assert img["yanchor"] == "bottom"
+        img = fig.layout.images[0]
+        assert img.yanchor == "bottom"
 
     def test_axes_locked_to_image_extent(self, store: DataStore):
         from jellyscope.data.model.coordinates import (
@@ -274,16 +274,16 @@ class TestBuildRGBFigure:
         sec = pixel_scale_arcsec(datacube.wcs) if datacube.wcs.has_celestial else None
         bounds = image_axis_bounds(nx, ny, sec)
 
-        x = fig["layout"]["xaxis"]
-        y = fig["layout"]["yaxis"]
-        assert x["autorange"] is False
-        assert y["autorange"] is False
-        assert x["range"] == [bounds["x"][0], bounds["x"][1]]
-        assert y["range"] == [bounds["y"][0], bounds["y"][1]]
-        assert x["minallowed"] == bounds["x"][0]
-        assert x["maxallowed"] == bounds["x"][1]
-        assert y["minallowed"] == bounds["y"][0]
-        assert y["maxallowed"] == bounds["y"][1]
+        x = fig.layout.xaxis
+        y = fig.layout.yaxis
+        assert x.autorange is False
+        assert y.autorange is False
+        assert x.range == bounds.x
+        assert y.range == bounds.y
+        assert x.minallowed == bounds.x[0]
+        assert x.maxallowed == bounds.x[1]
+        assert y.minallowed == bounds.y[0]
+        assert y.maxallowed == bounds.y[1]
 
     def test_meta_image_bounds_min_span(self, store: DataStore):
         from jellyscope.data.model.coordinates import (
@@ -298,6 +298,6 @@ class TestBuildRGBFigure:
         sec = pixel_scale_arcsec(datacube.wcs) if datacube.wcs.has_celestial else None
         bounds = image_axis_bounds(nx, ny, sec)
 
-        ib = fig["layout"]["meta"]["imageBounds"]
-        assert ib["x_min_span"] == bounds["x_min_span"]
-        assert ib["y_min_span"] == bounds["y_min_span"]
+        ib = fig.layout.meta.imageBounds
+        assert ib.x_min_span == bounds.x_min_span
+        assert ib.y_min_span == bounds.y_min_span

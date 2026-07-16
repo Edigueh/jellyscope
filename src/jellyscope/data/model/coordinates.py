@@ -7,21 +7,33 @@ derivation step over the data those models hold.
 
 from __future__ import annotations
 
-from typing import TypedDict
-
 import numpy as np
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropy.wcs import WCS
+from pydantic import BaseModel, ConfigDict
 
 
-class ImageAxisBounds(TypedDict):
+class ImageAxisBounds(BaseModel):
     """FOV bounds and min-span for an image figure's axes."""
+
+    model_config = ConfigDict(extra="forbid")
 
     x: tuple[float, float]
     y: tuple[float, float]
     x_min_span: float
     y_min_span: float
+
+
+class ImageExtent(BaseModel):
+    """Image-extent kwargs for Plotly ``layout.images[]`` placement."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    x: float
+    y: float
+    sizex: float
+    sizey: float
 
 
 def pixel_to_skycoord(x: float | np.ndarray, y: float | np.ndarray, wcs: WCS) -> SkyCoord:
@@ -92,17 +104,17 @@ def arcsec_axis(n: int, arcsec_per_pix: float) -> np.ndarray:
     return (np.arange(n, dtype=np.float64) - ref) * arcsec_per_pix
 
 
-def image_arcsec_extent(nx: int, ny: int, arcsec_per_pix: float) -> dict[str, float]:
+def image_arcsec_extent(nx: int, ny: int, arcsec_per_pix: float) -> ImageExtent:
     """Image-extent kwargs (``x``, ``y``, ``sizex``, ``sizey``) for
     ``layout.images[]`` so a PNG image overlay aligns with the centered
     arcsec axes produced by :func:`arcsec_axis`.
     """
-    return {
-        "x": -nx * arcsec_per_pix / 2.0,
-        "y": -ny * arcsec_per_pix / 2.0,
-        "sizex": nx * arcsec_per_pix,
-        "sizey": ny * arcsec_per_pix,
-    }
+    return ImageExtent(
+        x=-nx * arcsec_per_pix / 2.0,
+        y=-ny * arcsec_per_pix / 2.0,
+        sizex=nx * arcsec_per_pix,
+        sizey=ny * arcsec_per_pix,
+    )
 
 
 def image_axis_bounds(
@@ -113,9 +125,9 @@ def image_axis_bounds(
 ) -> ImageAxisBounds:
     """Axis bounds and min-span for the image FOV.
 
-    Returns a dict with:
-    - ``"x"``, ``"y"``: ``(min, max)`` tuples for the axis range.
-    - ``"x_min_span"``, ``"y_min_span"``: minimum allowed visible span in
+    Returns an ``ImageAxisBounds`` with:
+    - ``x``, ``y``: ``(min, max)`` tuples for the axis range.
+    - ``x_min_span``, ``y_min_span``: minimum allowed visible span in
       axis units (``min_span_pixels`` * pixel scale). Used by the
       front-end zoom handler to floor the zoom-in level so users do not
       zoom past the underlying pixel resolution.
@@ -130,15 +142,15 @@ def image_axis_bounds(
 
     if arcsec_per_pix is not None:
         ext = image_arcsec_extent(nx, ny, arcsec_per_pix)
-        x_bounds = (ext["x"], ext["x"] + ext["sizex"])
-        y_bounds = (ext["y"], ext["y"] + ext["sizey"])
+        x_bounds = (ext.x, ext.x + ext.sizex)
+        y_bounds = (ext.y, ext.y + ext.sizey)
     else:
         x_bounds = (0.0, float(nx))
         y_bounds = (0.0, float(ny))
 
-    return {
-        "x": x_bounds,
-        "y": y_bounds,
-        "x_min_span": min_span,
-        "y_min_span": min_span,
-    }
+    return ImageAxisBounds(
+        x=x_bounds,
+        y=y_bounds,
+        x_min_span=min_span,
+        y_min_span=min_span,
+    )

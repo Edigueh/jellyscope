@@ -1,8 +1,9 @@
 """Data store: discovers and caches datasets (datacubes + clump catalogs)."""
 
 import logging
-from dataclasses import dataclass, field
 from pathlib import Path
+
+from pydantic import BaseModel, ConfigDict
 
 from jellyscope.config import JellyscopeConfig
 from jellyscope.data.model.clumps import ClumpCatalog
@@ -15,12 +16,13 @@ NIRCAM_MATCHED = "nircam_matched"
 DEFAULT_DATASET = "default"
 
 
-@dataclass
-class Dataset:
+class Dataset(BaseModel):
     """A self-contained dataset: one or more datacubes + a clump catalog."""
 
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     name: str
-    datacubes: dict[str, DataCube] = field(default_factory=dict)
+    datacubes: dict[str, DataCube] = {}
     clumps: ClumpCatalog | None = None
 
     def get_datacube(self, name: str) -> DataCube:

@@ -11,7 +11,7 @@ Two methods are provided:
 
 import base64
 import io
-from typing import Any, Literal
+from typing import Literal
 
 import numpy as np
 from PIL import Image as PILImage
@@ -19,15 +19,22 @@ from PIL import Image as PILImage
 from jellyscope.data.data_store import DataCube
 from jellyscope.data.model.clumps import ClumpCatalog
 from jellyscope.data.model.coordinates import (
+    ImageExtent,
     arcsec_axis,
     image_arcsec_extent,
     image_axis_bounds,
     pixel_scale_arcsec,
 )
+from jellyscope.model.plotly import (
+    Figure,
+    HeatmapTrace,
+    LayoutImage,
+    PlotlyTrace,
+)
 from jellyscope.visualization._viz_helpers import (
-    RADEC_HOVER_PREFIX,
     build_dark_axis_layout,
     build_radec_customdata_grid,
+    radec_hover,
 )
 from jellyscope.visualization.image_viewer import (
     _default_alpha,
@@ -184,6 +191,41 @@ def _rgb_to_png_data_url(rgb: np.ndarray) -> str:
     return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
 
 
+def _build_click_target(
+    nx: int,
+    ny: int,
+    has_sky: bool,
+    sec_pix: float | None,
+    datacube: DataCube,
+) -> HeatmapTrace:
+    """Invisible heatmap layered under the PNG to receive click events."""
+    z: list[list[float | None]] = [[0.0] * nx for _ in range(ny)]
+    transparent: list[list[float | str]] = [
+        [0.0, "rgba(0,0,0,0)"],
+        [1.0, "rgba(0,0,0,0)"],
+    ]
+    if has_sky and sec_pix is not None:
+        return HeatmapTrace(
+            z=z,
+            colorscale=transparent,
+            hoverongaps=False,
+            showscale=False,
+            opacity=0,
+            x=arcsec_axis(nx, sec_pix).tolist(),
+            y=arcsec_axis(ny, sec_pix).tolist(),
+            customdata=build_radec_customdata_grid(nx, ny, datacube.wcs),
+            hovertemplate=radec_hover("<extra></extra>").template,
+        )
+    return HeatmapTrace(
+        z=z,
+        colorscale=transparent,
+        hoverongaps=False,
+        showscale=False,
+        opacity=0,
+        hoverinfo="skip",
+    )
+
+
 def build_rgb_figure(
     datacube: DataCube,
     r_index: int,
@@ -194,7 +236,7 @@ def build_rgb_figure(
     method: RGBMethod = "percentile_asinh",
     softening: float = 8.0,
     alpha: float | None = None,
-) -> dict[str, Any]:
+) -> Figure:
     """Build a Plotly figure with RGB composite + clump overlays.
 
     Pixels are rendered via ``layout.images[]`` (PNG annotation) on a Cartesian
@@ -219,26 +261,11 @@ def build_rgb_figure(
     has_sky = datacube.wcs is not None and datacube.wcs.has_celestial
     sec_pix: float | None = pixel_scale_arcsec(datacube.wcs) if has_sky else None
 
-    click_target: dict[str, Any] = {
-        "type": "heatmap",
-        "z": np.zeros((ny, nx)).tolist(),
-        "showscale": False,
-        "opacity": 0,
-        "colorscale": [[0, "rgba(0,0,0,0)"], [1, "rgba(0,0,0,0)"]],
-    }
-
-    if has_sky and sec_pix is not None:
-        click_target["x"] = arcsec_axis(nx, sec_pix).tolist()
-        click_target["y"] = arcsec_axis(ny, sec_pix).tolist()
-        click_target["customdata"] = build_radec_customdata_grid(nx, ny, datacube.wcs)
-        click_target["hovertemplate"] = RADEC_HOVER_PREFIX + "<extra></extra>"
-    else:
-        click_target["hoverinfo"] = "skip"
-
+    click_target = _build_click_target(nx, ny, has_sky, sec_pix, datacube)
     boundaries = create_clump_boundary_traces(clumps, selected_ids, wcs=datacube.wcs)
     centroids = create_centroid_markers(clumps, has_sky=has_sky, sec_pix=sec_pix or 0.0)
 
-    data: list[dict[str, Any]] = [click_target, *boundaries, centroids]
+    data: list[PlotlyTrace] = [click_target, *boundaries, centroids]
 
     r_name = datacube.filter_names[r_index]
     g_name = datacube.filter_names[g_index]
@@ -249,31 +276,31 @@ def build_rgb_figure(
         axis_label_x = "x offset (arcsec)"
         axis_label_y = "y offset (arcsec)"
     else:
-        extent = {"x": 0, "y": 0, "sizex": nx, "sizey": ny}
+        extent = ImageExtent(x=0.0, y=0.0, sizex=float(nx), sizey=float(ny))
         axis_label_x = "x (pixels)"
         axis_label_y = "y (pixels)"
 
     bounds = image_axis_bounds(nx, ny, sec_pix)
 
-    layout: dict[str, Any] = build_dark_axis_layout(
+    layout = build_dark_axis_layout(
         title_text=f"RGB: {r_name} / {g_name} / {b_name}",
         axis_label_x=axis_label_x,
         axis_label_y=axis_label_y,
         bounds=bounds,
     )
-    layout["images"] = [
-        {
-            "source": _rgb_to_png_data_url(rgb),
-            "xref": "x",
-            "yref": "y",
-            "x": extent["x"],
-            "y": extent["y"],
-            "yanchor": "bottom",
-            "sizex": extent["sizex"],
-            "sizey": extent["sizey"],
-            "sizing": "stretch",
-            "layer": "below",
-        }
+    layout.images = [
+        LayoutImage(
+            source=_rgb_to_png_data_url(rgb),
+            xref="x",
+            yref="y",
+            x=extent.x,
+            y=extent.y,
+            yanchor="bottom",
+            sizex=extent.sizex,
+            sizey=extent.sizey,
+            sizing="stretch",
+            layer="below",
+        )
     ]
 
-    return {"data": data, "layout": layout}
+    return Figure(data=data, layout=layout)

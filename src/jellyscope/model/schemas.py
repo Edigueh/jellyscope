@@ -1,8 +1,9 @@
 """Pydantic models for API request/response validation."""
 
-from typing import Any
-
 from pydantic import BaseModel
+
+from jellyscope.model.display import ClumpDetailDisplay
+from jellyscope.model.plotly import Figure
 
 # --- Response models ---
 
@@ -48,7 +49,7 @@ class FiltersResponse(BaseModel):
 class ViewerResponse(BaseModel):
     """Plotly figure for the galaxy viewer plus current filter name."""
 
-    figure: dict[str, Any]
+    figure: Figure
     filter_name: str
 
 
@@ -61,8 +62,8 @@ class ClumpsListResponse(BaseModel):
 class ClumpDetailResponse(BaseModel):
     """Full properties and boundary polygon for a single clump."""
 
-    properties: dict[str, Any]
-    boundary: list[list[float]]
+    properties: ClumpDetailDisplay
+    boundary: list[tuple[float, float]]
 
 
 class PixelClumpResponse(BaseModel):
@@ -74,7 +75,7 @@ class PixelClumpResponse(BaseModel):
 class RGBViewerResponse(BaseModel):
     """Plotly figure for RGB composite viewer."""
 
-    figure: dict[str, Any]
+    figure: Figure
     r_filter: str
     g_filter: str
     b_filter: str

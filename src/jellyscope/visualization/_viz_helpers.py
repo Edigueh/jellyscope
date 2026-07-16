@@ -5,14 +5,22 @@ RA/Dec customdata loop and the layout dict shared between the heatmap and
 RGB figure builders.
 """
 
-from typing import Any
-
 import numpy as np
 from astropy.wcs import WCS
 
 from jellyscope.data.model.coordinates import (
     ImageAxisBounds,
     pixel_to_skycoord,
+)
+from jellyscope.model.plotly import (
+    Axis,
+    Font,
+    HoverTemplate,
+    ImageBoundsMeta,
+    Layout,
+    LayoutMeta,
+    Margin,
+    Title,
 )
 
 # Shared dark-theme colors used by both image_viewer and rgb_composite layouts.
@@ -21,15 +29,6 @@ DARK_GRAY: str = "#999"
 SOFT_BLACK: str = "#333"
 DARK_BLUE: str = "#1a1a2e"
 SOFT_DARK_BLUE: str = "#16213e"
-
-# Hover prefix shared by heatmap and RGB click-target traces. Heatmap appends
-# "flux: %{z:.4f}<extra></extra>"; RGB appends "<extra></extra>".
-RADEC_HOVER_PREFIX: str = (
-    "pix: (%{customdata[0]:d}, %{customdata[1]:d})<br>"
-    'sky: (%{x:.3f}", %{y:.3f}")<br>'
-    "RA: %{customdata[2]:.6f}°<br>"
-    "Dec: %{customdata[3]:.6f}°<br>"
-)
 
 
 def build_radec_customdata_grid(
@@ -69,42 +68,51 @@ def build_dark_axis_layout(
     axis_label_x: str,
     axis_label_y: str,
     bounds: ImageAxisBounds,
-) -> dict[str, Any]:
+) -> Layout:
     """Return the dark-theme figure layout (xaxis/yaxis/bg/font/margin/dragmode/meta).
 
-    Caller appends ``layout["images"]`` for figures that overlay a PNG.
+    Caller appends ``layout.images`` for figures that overlay a PNG.
     """
-    x_min, x_max = bounds["x"]
-    y_min, y_max = bounds["y"]
-    return {
-        "title": {"text": title_text, "font": {"color": GRAY}},
-        "xaxis": {
-            "title": axis_label_x,
-            "gridcolor": SOFT_BLACK,
-            "color": DARK_GRAY,
-            "range": [x_min, x_max],
-            "minallowed": x_min,
-            "maxallowed": x_max,
-            "autorange": False,
-        },
-        "yaxis": {
-            "title": axis_label_y,
-            "gridcolor": SOFT_BLACK,
-            "color": DARK_GRAY,
-            "range": [y_min, y_max],
-            "minallowed": y_min,
-            "maxallowed": y_max,
-            "autorange": False,
-        },
-        "plot_bgcolor": DARK_BLUE,
-        "paper_bgcolor": SOFT_DARK_BLUE,
-        "font": {"color": GRAY},
-        "margin": {"l": 50, "r": 20, "t": 40, "b": 50},
-        "dragmode": "pan",
-        "meta": {
-            "imageBounds": {
-                "x_min_span": bounds["x_min_span"],
-                "y_min_span": bounds["y_min_span"],
-            }
-        },
-    }
+    x_min, x_max = bounds.x
+    y_min, y_max = bounds.y
+    return Layout(
+        title=Title(text=title_text, font=Font(color=GRAY)),
+        xaxis=Axis(
+            title=axis_label_x,
+            gridcolor=SOFT_BLACK,
+            color=DARK_GRAY,
+            range=(x_min, x_max),
+            minallowed=x_min,
+            maxallowed=x_max,
+            autorange=False,
+        ),
+        yaxis=Axis(
+            title=axis_label_y,
+            gridcolor=SOFT_BLACK,
+            color=DARK_GRAY,
+            range=(y_min, y_max),
+            minallowed=y_min,
+            maxallowed=y_max,
+            autorange=False,
+        ),
+        plot_bgcolor=DARK_BLUE,
+        paper_bgcolor=SOFT_DARK_BLUE,
+        font=Font(color=GRAY),
+        margin=Margin(l=50, r=20, t=40, b=50),
+        dragmode="pan",
+        meta=LayoutMeta(
+            imageBounds=ImageBoundsMeta(
+                x_min_span=bounds.x_min_span,
+                y_min_span=bounds.y_min_span,
+            )
+        ),
+    )
+
+
+def radec_hover(suffix: str) -> HoverTemplate:
+    """Build the RA/Dec hover prefix + caller-supplied suffix.
+
+    Heatmap appends ``"flux: %{z:.4f}<extra></extra>"``; RGB click target
+    appends ``"<extra></extra>"``.
+    """
+    return HoverTemplate.radec_prefix(suffix)

@@ -931,10 +931,9 @@ async function toggleClumpSelection(clumpId) {
 async function showClumpDetails(clumpId) {
     const propsResp = await fetch(`${dsBase()}/clumps/${clumpId}`);
     const propsData = await propsResp.json();
-    const props = propsData.properties;
     let html = '<table class="prop-table">';
-    for (const [key, val] of Object.entries(props)) {
-        html += `<tr><td>${key}</td><td>${val}</td></tr>`;
+    for (const {label, value} of propsData.properties.entries) {
+        html += `<tr><td>${label}</td><td>${value}</td></tr>`;
     }
     html += "</table>";
     document.getElementById("properties-content").innerHTML = html;

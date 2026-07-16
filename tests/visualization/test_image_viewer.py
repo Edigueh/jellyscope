@@ -124,11 +124,11 @@ class TestViewerLayoutBounds:
         sec = pixel_scale_arcsec(dc.wcs) if dc.wcs.has_celestial else None
         bounds = image_axis_bounds(nx, ny, sec)
 
-        x = fig["layout"]["xaxis"]
-        assert x["autorange"] is False
-        assert x["range"] == [bounds["x"][0], bounds["x"][1]]
-        assert x["minallowed"] == bounds["x"][0]
-        assert x["maxallowed"] == bounds["x"][1]
+        x = fig.layout.xaxis
+        assert x.autorange is False
+        assert x.range == bounds.x
+        assert x.minallowed == bounds.x[0]
+        assert x.maxallowed == bounds.x[1]
 
     def test_yaxis_locked_to_image_extent(self, store):
         from jellyscope.data.model.coordinates import (
@@ -141,11 +141,11 @@ class TestViewerLayoutBounds:
         sec = pixel_scale_arcsec(dc.wcs) if dc.wcs.has_celestial else None
         bounds = image_axis_bounds(nx, ny, sec)
 
-        y = fig["layout"]["yaxis"]
-        assert y["autorange"] is False
-        assert y["range"] == [bounds["y"][0], bounds["y"][1]]
-        assert y["minallowed"] == bounds["y"][0]
-        assert y["maxallowed"] == bounds["y"][1]
+        y = fig.layout.yaxis
+        assert y.autorange is False
+        assert y.range == bounds.y
+        assert y.minallowed == bounds.y[0]
+        assert y.maxallowed == bounds.y[1]
 
     def test_meta_image_bounds_min_span(self, store):
         from jellyscope.data.model.coordinates import (
@@ -158,6 +158,6 @@ class TestViewerLayoutBounds:
         sec = pixel_scale_arcsec(dc.wcs) if dc.wcs.has_celestial else None
         bounds = image_axis_bounds(nx, ny, sec)
 
-        ib = fig["layout"]["meta"]["imageBounds"]
-        assert ib["x_min_span"] == bounds["x_min_span"]
-        assert ib["y_min_span"] == bounds["y_min_span"]
+        ib = fig.layout.meta.imageBounds
+        assert ib.x_min_span == bounds.x_min_span
+        assert ib.y_min_span == bounds.y_min_span

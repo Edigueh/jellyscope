@@ -118,35 +118,35 @@ def test_arcsec_axis_centered_even_length():
 def test_image_arcsec_extent_matches_axis_span():
     nx, ny, sec = 170, 155, 0.02
     extent = image_arcsec_extent(nx, ny, sec)
-    assert extent["x"] == pytest.approx(-nx * sec / 2.0)
-    assert extent["y"] == pytest.approx(-ny * sec / 2.0)
-    assert extent["sizex"] == pytest.approx(nx * sec)
-    assert extent["sizey"] == pytest.approx(ny * sec)
+    assert extent.x == pytest.approx(-nx * sec / 2.0)
+    assert extent.y == pytest.approx(-ny * sec / 2.0)
+    assert extent.sizex == pytest.approx(nx * sec)
+    assert extent.sizey == pytest.approx(ny * sec)
     # Image lower-left to upper-right spans the full FOV.
-    assert extent["x"] + extent["sizex"] == pytest.approx(nx * sec / 2.0)
+    assert extent.x + extent.sizex == pytest.approx(nx * sec / 2.0)
 
 
 def test_image_axis_bounds_arcsec_branch():
     nx, ny, sec = 170, 155, 0.02
     bounds = image_axis_bounds(nx, ny, sec)
-    assert bounds["x"] == pytest.approx((-nx * sec / 2.0, nx * sec / 2.0))
-    assert bounds["y"] == pytest.approx((-ny * sec / 2.0, ny * sec / 2.0))
+    assert bounds.x == pytest.approx((-nx * sec / 2.0, nx * sec / 2.0))
+    assert bounds.y == pytest.approx((-ny * sec / 2.0, ny * sec / 2.0))
     # Default min span = 5 pixels.
-    assert bounds["x_min_span"] == pytest.approx(5 * sec)
-    assert bounds["y_min_span"] == pytest.approx(5 * sec)
+    assert bounds.x_min_span == pytest.approx(5 * sec)
+    assert bounds.y_min_span == pytest.approx(5 * sec)
 
 
 def test_image_axis_bounds_pixel_fallback():
     nx, ny = 170, 155
     bounds = image_axis_bounds(nx, ny, None)
-    assert bounds["x"] == (0.0, float(nx))
-    assert bounds["y"] == (0.0, float(ny))
-    assert np.isclose(bounds["x_min_span"], 5.0, rtol=1e-09, atol=1e-09)
-    assert np.isclose(bounds["y_min_span"], 5.0, rtol=1e-09, atol=1e-09)
+    assert bounds.x == (0.0, float(nx))
+    assert bounds.y == (0.0, float(ny))
+    assert np.isclose(bounds.x_min_span, 5.0, rtol=1e-09, atol=1e-09)
+    assert np.isclose(bounds.y_min_span, 5.0, rtol=1e-09, atol=1e-09)
 
 
 def test_image_axis_bounds_custom_min_span_pixels():
     nx, ny, sec = 100, 100, 0.04
     bounds = image_axis_bounds(nx, ny, sec, min_span_pixels=10)
-    assert bounds["x_min_span"] == pytest.approx(10 * sec)
-    assert bounds["y_min_span"] == pytest.approx(10 * sec)
+    assert bounds.x_min_span == pytest.approx(10 * sec)
+    assert bounds.y_min_span == pytest.approx(10 * sec)

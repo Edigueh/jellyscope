@@ -117,7 +117,7 @@ class ClumpCatalog:
         self._centroid_skycoords: SkyCoord | None = None
 
     def get_clump_by_id(self, clump_id: int) -> ClumpProperties:
-        """Fetch the property dataclass for a specific ID."""
+        """Fetch the ClumpProperties model for a specific ID."""
         return self.clumps[clump_id]
 
     def get_pixel_mask(self, clump_id: int) -> np.ndarray:
