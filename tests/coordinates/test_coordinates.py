@@ -14,6 +14,7 @@ from jellyscope.data.model.coordinates import (
     pixel_to_skycoord,
     pixels_to_radec_arrays,
     skycoord_separation_arcsec,
+    wcs_affine_params,
 )
 
 
@@ -150,3 +151,55 @@ def test_image_axis_bounds_custom_min_span_pixels():
     bounds = image_axis_bounds(nx, ny, sec, min_span_pixels=10)
     assert bounds.x_min_span == pytest.approx(10 * sec)
     assert bounds.y_min_span == pytest.approx(10 * sec)
+
+
+def _make_pc_wcs(pc00: float = -5.5555555e-06, pc11: float = 5.5555555e-06) -> WCS:
+    """WCS with a diagonal PC matrix and cdelt=1 — mirrors the real cut cubes."""
+    w = WCS(naxis=2)
+    w.wcs.crpix = [5148.5, -538.5]
+    w.wcs.crval = [3.5875, -30.3966667]
+    w.wcs.pc = [[pc00, 0.0], [0.0, pc11]]
+    w.wcs.cdelt = [1.0, 1.0]
+    w.wcs.ctype = ["RA---TAN", "DEC--TAN"]
+    return w
+
+
+def test_wcs_affine_params_none_without_celestial():
+    w = WCS(naxis=2)  # no ctype => not celestial
+    assert wcs_affine_params(w) is None
+
+
+def test_wcs_affine_params_converts_crpix_to_zero_based():
+    w = _make_pc_wcs()
+    p = wcs_affine_params(w)
+    assert p is not None
+    # FITS crpix is 1-based; helper returns 0-based (crpix - 1).
+    assert p.crpix == pytest.approx((5147.5, -539.5))
+    assert p.crval == pytest.approx((3.5875, -30.3966667))
+    assert p.scale == pytest.approx((-5.5555555e-06, 5.5555555e-06))
+    assert p.cos_dec == pytest.approx(np.cos(np.deg2rad(-30.3966667)))
+
+
+def test_wcs_affine_params_matches_pixel_to_skycoord():
+    """Linear affine must track the true TAN projection to < 20 mas over a cut."""
+    w = _make_pc_wcs()
+    p = wcs_affine_params(w)
+    assert p is not None
+    cos_dec = p.cos_dec
+    max_err_mas = 0.0
+    for x, y in [(0, 0), (499, 0), (0, 549), (499, 549), (250, 275)]:
+        sc = pixel_to_skycoord(x, y, w)
+        ra_affine = p.crval[0] + p.scale[0] * (x - p.crpix[0]) / cos_dec
+        dec_affine = p.crval[1] + p.scale[1] * (y - p.crpix[1])
+        err_deg = np.hypot((ra_affine - sc.ra.deg) * cos_dec, dec_affine - sc.dec.deg)
+        max_err_mas = max(max_err_mas, err_deg * 3600 * 1000)
+    assert max_err_mas < 20.0
+
+
+def test_wcs_affine_params_cdelt_scaling():
+    """scale must be PC diagonal * cdelt, not PC alone."""
+    w = _make_pc_wcs(pc00=-1.0, pc11=1.0)
+    w.wcs.cdelt = [2.0e-06, 3.0e-06]
+    p = wcs_affine_params(w)
+    assert p is not None
+    assert p.scale == pytest.approx((-2.0e-06, 3.0e-06))

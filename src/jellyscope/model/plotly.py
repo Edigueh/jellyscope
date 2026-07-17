@@ -22,31 +22,6 @@ class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-# --- hover ---
-
-
-class HoverTemplate(_Strict):
-    """Wraps Plotly's printf-DSL hovertemplate string.
-
-    Plotly's hovertemplate has no formal grammar; the leaf is a string with
-    ``%{field:fmt}`` substitutions. This wrapper centralizes construction so
-    callers go through named factories instead of pasting literals.
-    """
-
-    template: str
-
-    @classmethod
-    def radec_prefix(cls, suffix: str) -> "HoverTemplate":
-        """RA/Dec hover prefix shared by heatmap and RGB click-target traces."""
-        prefix = (
-            "pix: (%{customdata[0]:d}, %{customdata[1]:d})<br>"
-            'sky: (%{x:.3f}", %{y:.3f}")<br>'
-            "RA: %{customdata[2]:.6f}°<br>"
-            "Dec: %{customdata[3]:.6f}°<br>"
-        )
-        return cls(template=prefix + suffix)
-
-
 # --- leaf models ---
 
 
@@ -112,8 +87,27 @@ class ImageBoundsMeta(_Strict):
     y_min_span: float
 
 
+class WcsAffineMeta(_Strict):
+    """Compact linear pixel↔RA/Dec transform for client-side hover readout.
+
+    These cut datacubes have an axis-aligned, rotation-free WCS (diagonal PC,
+    no CD/SIP), so RA/Dec is affine in pixel coords to ~16 mas over the cut —
+    ample for a hover tooltip. The frontend reconstructs RA/Dec from the arcsec
+    hover coordinate instead of the backend shipping a per-pixel grid.
+    """
+
+    crpix: tuple[float, float]  # 0-based reference pixel (x, y)
+    crval: tuple[float, float]  # reference world coords (ra_deg, dec_deg)
+    scale: tuple[float, float]  # PC diagonal * cdelt (deg/pixel) for (x, y)
+    cos_dec: float  # cos(crval_dec) — RA scaling near the reference
+    arcsec_per_pix: float  # plot axes are arcsec-from-center; convert first
+    cx: float  # image-center pixel x = (nx - 1) / 2
+    cy: float  # image-center pixel y = (ny - 1) / 2
+
+
 class LayoutMeta(_Strict):
     imageBounds: ImageBoundsMeta  # noqa: N815 — Plotly key is camelCase by convention
+    wcs: WcsAffineMeta | None = None
 
 
 class Layout(_Strict):

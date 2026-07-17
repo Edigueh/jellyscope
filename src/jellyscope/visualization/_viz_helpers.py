@@ -1,26 +1,25 @@
-"""Shared visualization helpers: dark-theme colors, customdata grid, axis layout.
+"""Shared visualization helpers: dark-theme colors and axis layout.
 
-Private to the visualization package — kept here to dedupe the per-cell
-RA/Dec customdata loop and the layout dict shared between the heatmap and
-RGB figure builders.
+Private to the visualization package — dedupes the layout dict shared between
+the heatmap and RGB figure builders.
 """
 
-import numpy as np
 from astropy.wcs import WCS
 
 from jellyscope.data.model.coordinates import (
     ImageAxisBounds,
-    pixel_to_skycoord,
+    pixel_scale_arcsec,
+    wcs_affine_params,
 )
 from jellyscope.model.plotly import (
     Axis,
     Font,
-    HoverTemplate,
     ImageBoundsMeta,
     Layout,
     LayoutMeta,
     Margin,
     Title,
+    WcsAffineMeta,
 )
 
 # Shared dark-theme colors used by both image_viewer and rgb_composite layouts.
@@ -31,35 +30,24 @@ DARK_BLUE: str = "#1a1a2e"
 SOFT_DARK_BLUE: str = "#16213e"
 
 
-def build_radec_customdata_grid(
-    nx: int, ny: int, wcs: WCS
-) -> list[list[list[float | int | None]]]:
-    """Per-cell ``[i, j, ra_deg|None, dec_deg|None]`` grid; shape ``(ny, nx, 4)``.
+def _wcs_affine_meta(wcs: WCS | None, nx: int, ny: int) -> WcsAffineMeta | None:
+    """Build the layout WCS meta for client-side hover RA/Dec, or None.
 
-    Vectorizes ``pixel_to_skycoord`` over a meshgrid and returns Python lists so
-    non-finite values serialize as JSON ``null``.
+    Combines the linear pixel→RA/Dec params with the arcsec pixel scale and
+    image-center pixel so the frontend can map an arcsec hover coord to RA/Dec.
     """
-    xx_pix, yy_pix = np.meshgrid(np.arange(nx, dtype=np.float64), np.arange(ny, dtype=np.float64))
-    try:
-        sky = pixel_to_skycoord(xx_pix, yy_pix, wcs)
-        ra = np.asarray(sky.ra.deg, dtype=np.float64)
-        dec = np.asarray(sky.dec.deg, dtype=np.float64)
-    except Exception:  # pragma: no cover - defensive
-        ra = np.full((ny, nx), np.nan)
-        dec = np.full((ny, nx), np.nan)
-
-    # Build (ny, nx, 4) object grid; non-finite ra/dec become None.
-    grid = np.empty((ny, nx, 4), dtype=object)
-    grid[..., 0] = xx_pix.astype(np.int64)
-    grid[..., 1] = yy_pix.astype(np.int64)
-    ra_obj = ra.astype(object)
-    dec_obj = dec.astype(object)
-    ra_obj[~np.isfinite(ra)] = None
-    dec_obj[~np.isfinite(dec)] = None
-    grid[..., 2] = ra_obj
-    grid[..., 3] = dec_obj
-    result: list[list[list[float | int | None]]] = grid.tolist()
-    return result
+    params = wcs_affine_params(wcs) if wcs is not None else None
+    if params is None:
+        return None
+    return WcsAffineMeta(
+        crpix=params.crpix,
+        crval=params.crval,
+        scale=params.scale,
+        cos_dec=params.cos_dec,
+        arcsec_per_pix=pixel_scale_arcsec(wcs),
+        cx=(nx - 1) / 2.0,
+        cy=(ny - 1) / 2.0,
+    )
 
 
 def build_dark_axis_layout(
@@ -68,9 +56,13 @@ def build_dark_axis_layout(
     axis_label_x: str,
     axis_label_y: str,
     bounds: ImageAxisBounds,
+    wcs: WCS | None = None,
+    nx: int,
+    ny: int,
 ) -> Layout:
     """Return the dark-theme figure layout (xaxis/yaxis/bg/font/margin/dragmode/meta).
 
+    ``wcs``/``nx``/``ny`` populate ``meta.wcs`` for client-side hover RA/Dec.
     Caller appends ``layout.images`` for figures that overlay a PNG.
     """
     x_min, x_max = bounds.x
@@ -104,15 +96,7 @@ def build_dark_axis_layout(
             imageBounds=ImageBoundsMeta(
                 x_min_span=bounds.x_min_span,
                 y_min_span=bounds.y_min_span,
-            )
+            ),
+            wcs=_wcs_affine_meta(wcs, nx, ny),
         ),
     )
-
-
-def radec_hover(suffix: str) -> HoverTemplate:
-    """Build the RA/Dec hover prefix + caller-supplied suffix.
-
-    Heatmap appends ``"flux: %{z:.4f}<extra></extra>"``; RGB click target
-    appends ``"<extra></extra>"``.
-    """
-    return HoverTemplate.radec_prefix(suffix)

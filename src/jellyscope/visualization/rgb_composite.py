@@ -33,8 +33,6 @@ from jellyscope.model.plotly import (
 )
 from jellyscope.visualization._viz_helpers import (
     build_dark_axis_layout,
-    build_radec_customdata_grid,
-    radec_hover,
 )
 from jellyscope.visualization.image_viewer import (
     _default_alpha,
@@ -196,7 +194,6 @@ def _build_click_target(
     ny: int,
     has_sky: bool,
     sec_pix: float | None,
-    datacube: DataCube,
 ) -> HeatmapTrace:
     """Invisible heatmap layered under the PNG to receive click events."""
     z: list[list[float | None]] = [[0.0] * nx for _ in range(ny)]
@@ -213,8 +210,8 @@ def _build_click_target(
             opacity=0,
             x=arcsec_axis(nx, sec_pix).tolist(),
             y=arcsec_axis(ny, sec_pix).tolist(),
-            customdata=build_radec_customdata_grid(nx, ny, datacube.wcs),
-            hovertemplate=radec_hover("<extra></extra>").template,
+            # RA/Dec reconstructed client-side from layout.meta.wcs on hover.
+            hovertemplate='sky: (%{x:.3f}", %{y:.3f}")<extra></extra>',
         )
     return HeatmapTrace(
         z=z,
@@ -261,7 +258,7 @@ def build_rgb_figure(
     has_sky = datacube.wcs is not None and datacube.wcs.has_celestial
     sec_pix: float | None = pixel_scale_arcsec(datacube.wcs) if has_sky else None
 
-    click_target = _build_click_target(nx, ny, has_sky, sec_pix, datacube)
+    click_target = _build_click_target(nx, ny, has_sky, sec_pix)
     boundaries = create_clump_boundary_traces(clumps, selected_ids, wcs=datacube.wcs)
     centroids = create_centroid_markers(clumps, has_sky=has_sky, sec_pix=sec_pix or 0.0)
 
@@ -287,6 +284,9 @@ def build_rgb_figure(
         axis_label_x=axis_label_x,
         axis_label_y=axis_label_y,
         bounds=bounds,
+        wcs=datacube.wcs,
+        nx=nx,
+        ny=ny,
     )
     layout.images = [
         LayoutImage(

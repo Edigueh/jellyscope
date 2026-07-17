@@ -188,6 +188,19 @@ class TestBuildRGBFigure:
         assert d0.opacity == 0
         assert d0.showscale is False
 
+    def test_click_target_has_no_customdata_grid(self, store: DataStore):
+        """RA/Dec grid removed from the click target — was the payload cost."""
+        fig = self._build(store)
+        assert fig.data[0].customdata is None
+
+    def test_meta_wcs_present_for_celestial(self, store: DataStore):
+        fig = self._build(store)
+        dataset = store.get_dataset(store.list_datasets()[0])
+        dc = dataset.get_datacube(dataset.list_datacubes()[0])
+        if not (dc.wcs is not None and dc.wcs.has_celestial):
+            pytest.skip("fixture cube has no celestial WCS")
+        assert fig.layout.meta.wcs is not None
+
     def test_layout_images_png_annotation(self, store: DataStore):
         fig = self._build(store)
         images = fig.layout.images

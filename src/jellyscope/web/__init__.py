@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -18,6 +19,10 @@ def create_app(config: JellyscopeConfig | None = None) -> FastAPI:
 
     app = FastAPI(title="Jellyscope", version="0.1.0")
     app.state.config = config
+
+    # Compress large figure JSON — the app is bandwidth-bound behind the HF
+    # proxy (fine locally over loopback). Halves the multi-MB viewer payloads.
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
 
     # Pre-load data into memory.
     ensure_data(config.data_dir)

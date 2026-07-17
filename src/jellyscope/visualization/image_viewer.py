@@ -26,8 +26,6 @@ from jellyscope.model.plotly import (
 from jellyscope.visualization._viz_helpers import (
     GRAY,
     build_dark_axis_layout,
-    build_radec_customdata_grid,
-    radec_hover,
 )
 
 _RED: str = "#ff4444"
@@ -153,8 +151,7 @@ def create_galaxy_heatmap(
             colorbar=ColorBar(title="Flux (stretched)", thickness=15),
             x=arcsec_axis(nx, sec_pix).tolist(),
             y=arcsec_axis(ny, sec_pix).tolist(),
-            customdata=build_radec_customdata_grid(nx, ny, wcs),
-            hovertemplate=radec_hover("flux: %{z:.4f}<extra></extra>").template,
+            hovertemplate='sky: (%{x:.3f}", %{y:.3f}")<br>flux: %{z:.4f}<extra></extra>',
         )
 
     return HeatmapTrace(
@@ -366,6 +363,9 @@ def build_viewer_figure(
         axis_label_x=axis_label_x,
         axis_label_y=axis_label_y,
         bounds=bounds,
+        wcs=datacube.wcs,
+        nx=nx,
+        ny=ny,
     )
 
     return Figure(data=data, layout=layout)

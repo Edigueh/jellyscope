@@ -182,6 +182,14 @@ main {
     min-height: 0;
 }
 
+#coord-readout {
+    flex: 0 0 auto;
+    padding: 2px 8px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    min-height: 16px;
+}
+
 /* Right panels */
 #right-panels {
     display: flex;

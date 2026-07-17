@@ -1,6 +1,7 @@
 """Tests for the Lupton asinh stretch and background estimation."""
 
 import numpy as np
+import pytest
 
 from jellyscope.visualization.image_viewer import (
     _estimate_background,
@@ -161,3 +162,22 @@ class TestViewerLayoutBounds:
         ib = fig.layout.meta.imageBounds
         assert ib.x_min_span == bounds.x_min_span
         assert ib.y_min_span == bounds.y_min_span
+
+    def test_meta_wcs_present_for_celestial(self, store):
+        """Celestial cubes carry the affine WCS meta for client-side hover."""
+        fig, dc = self._build(store)
+        if not (dc.wcs is not None and dc.wcs.has_celestial):
+            pytest.skip("fixture cube has no celestial WCS")
+        w = fig.layout.meta.wcs
+        assert w is not None
+        ny, nx = dc.spatial_shape
+        assert w.cx == pytest.approx((nx - 1) / 2.0)
+        assert w.cy == pytest.approx((ny - 1) / 2.0)
+        assert w.arcsec_per_pix > 0
+
+    def test_heatmap_has_no_customdata_grid(self, store):
+        """The per-pixel RA/Dec grid is gone (was the payload bottleneck)."""
+        fig, _ = self._build(store)
+        heatmap = fig.data[0]
+        assert heatmap.type == "heatmap"
+        assert heatmap.customdata is None

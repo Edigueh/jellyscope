@@ -5,6 +5,12 @@
 
 const DEFAULT_RGB_FILTERS = {r: "F200W", g: "F115W", b: "F090W"};
 
+// Clump boundary line styling — must mirror image_viewer.py (_RED/_BLUE, widths).
+const CLUMP_COLOR = "#00ccff";
+const CLUMP_SELECTED_COLOR = "#ff4444";
+const CLUMP_WIDTH = 1.2;
+const CLUMP_SELECTED_WIDTH = 2.5;
+
 // Fallback wavelength offsets (µm) used when a default filter lacks a
 // WAVELENGTHS entry on first load. Values match F200W−F115W and F115W−F090W.
 const RGB_DELTA_RG_FALLBACK = 0.836;
@@ -352,13 +358,13 @@ function setupEventListeners() {
     document.getElementById("btn-centroids").addEventListener("click", () => {
         state.showCentroids = !state.showCentroids;
         document.getElementById("btn-centroids").classList.toggle("active", state.showCentroids);
-        renderViewer();
+        setCentroidsVisible(state.showCentroids); // client-side, no refetch
     });
 
     document.getElementById("btn-boundaries").addEventListener("click", () => {
         state.showBoundaries = !state.showBoundaries;
         document.getElementById("btn-boundaries").classList.toggle("active", state.showBoundaries);
-        renderViewer();
+        setBoundariesVisible(state.showBoundaries); // client-side, no refetch
     });
 
     setupSidebarResizer();
@@ -487,22 +493,103 @@ async function renderViewer() {
 
     fig.layout.dragmode = state.dragmode;
 
-    if (!state.showBoundaries) {
-        fig.data = fig.data.filter((t) => !(t.name?.startsWith("Clump ")));
-    }
-
-    if (!state.showCentroids) {
-        fig.data.pop();
-    }
-
     const viewer = document.getElementById("galaxy-viewer");
     await Plotly.react(viewer, fig.data, fig.layout, plotlyConfig);
+
+    // Overlay visibility is client-side state; apply it without refetching.
+    setBoundariesVisible(state.showBoundaries);
+    setCentroidsVisible(state.showCentroids);
+    // Reassert selection colors — a fresh fetch draws every clump with the
+    // server's selected_ids, but selection may have changed since; recolor.
+    applyClumpSelectionColors();
 
     // Attach click handler
     viewer.removeAllListeners?.("plotly_click");
     viewer.on("plotly_click", onViewerClick);
 
+    // Attach hover RA/Dec readout (computed client-side from layout.meta.wcs).
+    viewer.removeAllListeners?.("plotly_hover");
+    viewer.removeAllListeners?.("plotly_unhover");
+    viewer.on("plotly_hover", onViewerHover);
+    viewer.on("plotly_unhover", () => {
+        document.getElementById("coord-readout").textContent = "";
+    });
+
     attachZoomOutLock(viewer);
+}
+
+// Show RA/Dec on hover, reconstructed from the compact affine WCS transform in
+// layout.meta.wcs. Plot axes are arcsec-from-center (celestial) so we go
+// arcsec → pixel → RA/Dec. No-op when the dataset has no celestial WCS.
+function onViewerHover(eventData) {
+    const readout = document.getElementById("coord-readout");
+    const pt = eventData.points?.[0];
+    const viewer = document.getElementById("galaxy-viewer");
+    const w = viewer.layout?.meta?.wcs;
+    if (!pt || !w) {
+        readout.textContent = "";
+        return;
+    }
+    // Axis coords (arcsec offset from center) → 0-based pixel.
+    const xPix = w.cx + pt.x / w.arcsec_per_pix;
+    const yPix = w.cy + pt.y / w.arcsec_per_pix;
+    // Linear pixel → RA/Dec (rotation-free WCS; RA scaled by cos(dec0)).
+    const ra = w.crval[0] + (w.scale[0] * (xPix - w.crpix[0])) / w.cos_dec;
+    const dec = w.crval[1] + w.scale[1] * (yPix - w.crpix[1]);
+    readout.textContent =
+        `pix (${Math.round(xPix)}, ${Math.round(yPix)})  ·  RA ${ra.toFixed(6)}°  Dec ${dec.toFixed(6)}°`;
+}
+
+// Trace indices whose name starts with "Clump " (the boundary outlines).
+function boundaryTraceIndices(viewer) {
+    return (viewer.data || [])
+        .map((t, i) => (t.name?.startsWith("Clump ") ? i : -1))
+        .filter((i) => i >= 0);
+}
+
+// Line color/width for a boundary trace given its selection state.
+function clumpLineStyle(selected) {
+    return {
+        color: selected ? CLUMP_SELECTED_COLOR : CLUMP_COLOR,
+        width: selected ? CLUMP_SELECTED_WIDTH : CLUMP_WIDTH,
+    };
+}
+
+function setBoundariesVisible(show) {
+    const viewer = document.getElementById("galaxy-viewer");
+    const idx = boundaryTraceIndices(viewer);
+    if (idx.length) Plotly.restyle(viewer, {visible: show}, idx);
+}
+
+function setCentroidsVisible(show) {
+    const viewer = document.getElementById("galaxy-viewer");
+    const i = (viewer.data || []).findIndex((t) => t.name === "Centroids");
+    if (i >= 0) Plotly.restyle(viewer, {visible: show}, [i]);
+}
+
+// Recolor every boundary trace to match state.selectedClumps, in one restyle.
+function applyClumpSelectionColors() {
+    const viewer = document.getElementById("galaxy-viewer");
+    const idx = boundaryTraceIndices(viewer);
+    if (!idx.length) return;
+    const styles = idx.map((i) => {
+        const id = Number.parseInt(viewer.data[i].name.replace("Clump ", ""));
+        return clumpLineStyle(state.selectedClumps.has(id));
+    });
+    Plotly.restyle(
+        viewer,
+        {"line.color": styles.map((s) => s.color), "line.width": styles.map((s) => s.width)},
+        idx,
+    );
+}
+
+// Recolor a single clump's boundary to its current selection state. No refetch.
+function recolorClump(clumpId) {
+    const viewer = document.getElementById("galaxy-viewer");
+    const i = (viewer.data || []).findIndex((t) => t.name === `Clump ${clumpId}`);
+    if (i < 0) return; // clump has no boundary trace (e.g. boundaries not drawn)
+    const s = clumpLineStyle(state.selectedClumps.has(clumpId));
+    Plotly.restyle(viewer, {"line.color": s.color, "line.width": s.width}, [i]);
 }
 
 // Custom wheel-zoom for the locked image plots.
@@ -912,7 +999,7 @@ async function toggleClumpSelection(clumpId) {
     }
 
     updateClumpListUI();
-    renderViewer(); // viewer overlay update — fire-and-forget is fine
+    recolorClump(clumpId); // client-side overlay recolor, no server round-trip
 
     const selected = Array.from(state.selectedClumps);
     try {

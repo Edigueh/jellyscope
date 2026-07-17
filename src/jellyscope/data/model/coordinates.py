@@ -93,6 +93,44 @@ def pixel_scale_arcsec(wcs: WCS) -> float:
     return float(np.mean(values))
 
 
+class WcsAffineParams(BaseModel):
+    """Linear pixel→RA/Dec params for a rotation-free, axis-aligned WCS.
+
+    RA/Dec ≈ ``crval + scale * (pix - crpix)``, with RA divided by
+    ``cos(dec0)``. Exact only when the WCS has no rotation/skew (diagonal PC,
+    no CD/SIP); these cut cubes satisfy that (~16 mas max error over the cut).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    crpix: tuple[float, float]
+    crval: tuple[float, float]
+    scale: tuple[float, float]
+    cos_dec: float
+
+
+def wcs_affine_params(wcs: WCS) -> WcsAffineParams | None:
+    """Extract the linear pixel→RA/Dec transform, or None if not celestial.
+
+    Reads ``crpix``/``crval`` and the diagonal ``PC * cdelt`` from the celestial
+    WCS. ``crpix`` is converted to 0-based (FITS is 1-based). Returns None when
+    the WCS lacks celestial axes so callers can skip the RA/Dec readout.
+    """
+    if wcs is None or not wcs.has_celestial:
+        return None
+    cw = wcs.celestial
+    crpix = cw.wcs.crpix
+    crval = cw.wcs.crval
+    pc = cw.wcs.pc
+    cdelt = cw.wcs.cdelt
+    return WcsAffineParams(
+        crpix=(float(crpix[0]) - 1.0, float(crpix[1]) - 1.0),  # 1-based → 0-based
+        crval=(float(crval[0]), float(crval[1])),
+        scale=(float(pc[0, 0] * cdelt[0]), float(pc[1, 1] * cdelt[1])),
+        cos_dec=float(np.cos(np.deg2rad(float(crval[1])))),
+    )
+
+
 def arcsec_axis(n: int, arcsec_per_pix: float) -> np.ndarray:
     """Axis values for an n-cell axis in arcsec, centered on image center.
 
