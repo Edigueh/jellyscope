@@ -88,11 +88,6 @@ def build_dark_axis_layout(
             minallowed=y_min,
             maxallowed=y_max,
             autorange=False,
-            # Square data pixels: lock y-scale to x and letterbox the extra
-            # width (constrain="domain") instead of stretching the galaxy.
-            scaleanchor="x",
-            scaleratio=1.0,
-            constrain="domain",
         ),
         plot_bgcolor=DARK_BLUE,
         paper_bgcolor=SOFT_DARK_BLUE,
@@ -103,6 +98,8 @@ def build_dark_axis_layout(
             imageBounds=ImageBoundsMeta(
                 x_min_span=bounds.x_min_span,
                 y_min_span=bounds.y_min_span,
+                x_range=bounds.x,
+                y_range=bounds.y,
             ),
             wcs=_wcs_affine_meta(wcs, nx, ny),
         ),

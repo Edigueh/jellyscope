@@ -52,8 +52,8 @@ function RgbChannelSelect(props: { anchor: "R" | "G" | "B"; index: number }): JS
 
 export function Toolbar(): JSX.Element {
   return (
-    <div class="glass pointer-events-auto flex max-w-[calc(100vw-2rem)] flex-wrap items-center gap-x-3 gap-y-2 rounded-xl px-3 py-2 shadow-lg shadow-black/30">
-      {/* Wordmark (header dissolved into the toolbar) */}
+    <div class="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2">
+      {/* Wordmark */}
       <div class="flex items-center gap-2 pr-1">
         <span aria-hidden="true" class="text-accent text-md leading-none">
           ✦

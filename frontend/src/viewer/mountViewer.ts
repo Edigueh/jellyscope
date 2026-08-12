@@ -20,10 +20,12 @@ type PlotlyDiv = any;
 
 const plotlyConfig = {
   responsive: true,
-  displayModeBar: true,
-  modeBarButtonsToRemove: ["toImage", "sendDataToCloud"],
+  displayModeBar: false, // custom wheel-zoom + drag-pan + dbl-click reset replace it
   scrollZoom: false,
 };
+
+// Fixed figure margins (mirror _viz_helpers.py build_dark_axis_layout).
+const MARGIN = { l: 48, r: 12, t: 12, b: 44 };
 
 let viewerEl: PlotlyDiv | null = null;
 
@@ -67,6 +69,11 @@ export async function renderViewer(): Promise<void> {
 
   await Plotly.react(viewerEl, fig.data, fig.layout, plotlyConfig);
 
+  // Size the plot box to the data aspect so pixels are square (letterboxed),
+  // then reflow. Done via container sizing rather than a Plotly scaleanchor
+  // lock, which fights the custom range-owning zoom/pan.
+  fitPlotAspect();
+
   // Overlay visibility + selection colors are client-side; apply post-fetch.
   setBoundariesVisible(viewerEl, state.showBoundaries);
   setCentroidsVisible(viewerEl, state.showCentroids);
@@ -74,6 +81,46 @@ export async function renderViewer(): Promise<void> {
 
   wireEvents(viewerEl);
   attachZoomOutLock(viewerEl, () => state.dragmode, onPixelPress, onRectLassoSelect);
+}
+
+// Size #galaxy-viewer so its *plot area* (element minus fixed margins) matches
+// the data aspect ratio, and center it in its parent (the parent letterboxes
+// with the canvas bg). No-op until meta.imageBounds ranges are present.
+function fitPlotAspect(): void {
+  if (!viewerEl) return;
+  const b = viewerEl.layout?.meta?.imageBounds;
+  if (!b?.x_range || !b?.y_range) return;
+
+  const parent = viewerEl.parentElement as HTMLElement | null;
+  if (!parent) return;
+  const availW = parent.clientWidth;
+  const availH = parent.clientHeight;
+  if (availW <= 0 || availH <= 0) return;
+
+  const dataW = b.x_range[1] - b.x_range[0];
+  const dataH = b.y_range[1] - b.y_range[0];
+  if (dataW <= 0 || dataH <= 0) return;
+  const dataAspect = dataW / dataH; // plot-area width/height target
+
+  const mx = MARGIN.l + MARGIN.r;
+  const my = MARGIN.t + MARGIN.b;
+
+  // Largest element (elW×elH ≤ avail) whose plot area (elW−mx)×(elH−my) has
+  // ratio == dataAspect. Try width-limited first, fall back to height-limited.
+  let elW = availW;
+  let plotW = elW - mx;
+  let plotH = plotW / dataAspect;
+  let elH = plotH + my;
+  if (elH > availH) {
+    elH = availH;
+    plotH = elH - my;
+    plotW = plotH * dataAspect;
+    elW = plotW + mx;
+  }
+
+  viewerEl.style.width = `${Math.max(0, Math.round(elW))}px`;
+  viewerEl.style.height = `${Math.max(0, Math.round(elH))}px`;
+  Plotly.Plots.resize(viewerEl);
 }
 
 function onRectLassoSelect(ed: unknown): void {
@@ -106,9 +153,9 @@ export function setDragmode(mode: string): void {
   if (viewerEl) Plotly.relayout(viewerEl, { dragmode: mode });
 }
 
-/** Reflow after the rail resizes (mirrors the old resizer release). */
+/** Reflow after the rail resizes: re-fit the aspect box, then resize Plotly. */
 export function resizeViewer(): void {
-  if (viewerEl) Plotly.Plots.resize(viewerEl);
+  fitPlotAspect();
 }
 
 export function getViewerEl(): PlotlyDiv | null {

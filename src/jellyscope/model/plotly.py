@@ -59,12 +59,6 @@ class Axis(_Strict):
     minallowed: float
     maxallowed: float
     autorange: bool
-    # Aspect lock: set on the y-axis so one data pixel is square regardless of
-    # container width. constrain="domain" letterboxes (shrinks the plotted
-    # domain) instead of clipping the data range.
-    scaleanchor: str | None = None
-    scaleratio: float | None = None
-    constrain: str | None = None
 
 
 class Margin(_Strict):
@@ -91,6 +85,10 @@ class LayoutImage(_Strict):
 class ImageBoundsMeta(_Strict):
     x_min_span: float
     y_min_span: float
+    # Data extents (axis units) so the frontend can size the plot box to the
+    # data aspect ratio (square pixels) without a Plotly scaleanchor lock.
+    x_range: tuple[float, float]
+    y_range: tuple[float, float]
 
 
 class WcsAffineMeta(_Strict):
