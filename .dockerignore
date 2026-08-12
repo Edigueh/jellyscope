@@ -23,6 +23,8 @@ htmlcov
 .DS_Store
 .github/
 .claude/
+node_modules
+frontend/dist
 
 # project
 .env

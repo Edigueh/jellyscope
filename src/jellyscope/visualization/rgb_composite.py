@@ -264,10 +264,6 @@ def build_rgb_figure(
 
     data: list[PlotlyTrace] = [click_target, *boundaries, centroids]
 
-    r_name = datacube.filter_names[r_index]
-    g_name = datacube.filter_names[g_index]
-    b_name = datacube.filter_names[b_index]
-
     if has_sky and sec_pix is not None:
         extent = image_arcsec_extent(nx, ny, sec_pix)
         axis_label_x = "x offset (arcsec)"
@@ -280,7 +276,7 @@ def build_rgb_figure(
     bounds = image_axis_bounds(nx, ny, sec_pix)
 
     layout = build_dark_axis_layout(
-        title_text=f"RGB: {r_name} / {g_name} / {b_name}",
+        title_text="",
         axis_label_x=axis_label_x,
         axis_label_y=axis_label_y,
         bounds=bounds,

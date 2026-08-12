@@ -56,17 +56,18 @@ def index(request: Request) -> Response:
     default_ds = store.get_dataset(default_dataset)
     # Pick first available datacube of the default dataset for the initial UI.
     default_datacube = default_ds.list_datacubes()[0]
+    bootstrap = {
+        "datasets": store.list_datasets(),
+        "default_dataset": default_dataset,
+        "default_datacube": default_datacube,
+        "datacubes": default_ds.list_datacubes(),
+        "filters": default_ds.get_datacube(default_datacube).filter_names,
+        "wavelengths": NIRCAM_WAVELENGTHS,
+    }
     return request.app.state.templates.TemplateResponse(  # type: ignore[no-any-return]
         request,
         "index.html",
-        {
-            "datasets": store.list_datasets(),
-            "default_dataset": default_dataset,
-            "default_datacube": default_datacube,
-            "datacubes": default_ds.list_datacubes(),
-            "filters": default_ds.get_datacube(default_datacube).filter_names,
-            "wavelengths": NIRCAM_WAVELENGTHS,
-        },
+        {"bootstrap": bootstrap, "vite": request.app.state.vite},
     )
 
 

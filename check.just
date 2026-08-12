@@ -26,6 +26,10 @@ typecheck:
 spellcheck:
     uv run codespell src/ tests/ docs/ README.md
 
+[doc('TypeScript type check (frontend)')]
+ui-typecheck:
+    cd frontend && npm run typecheck
+
 [doc('Run tests with coverage')]
 test:
     uv run pytest
@@ -35,5 +39,5 @@ test-fast:
     uv run pytest --no-cov -x -q
 
 [doc('Run ALL checks (what CI would run)')]
-all: lint format-check typecheck spellcheck test
+all: lint format-check typecheck spellcheck ui-typecheck test
     @echo "All checks passed."

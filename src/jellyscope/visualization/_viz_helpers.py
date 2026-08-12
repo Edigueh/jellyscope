@@ -22,12 +22,14 @@ from jellyscope.model.plotly import (
     WcsAffineMeta,
 )
 
-# Shared dark-theme colors used by both image_viewer and rgb_composite layouts.
-GRAY: str = "#cccccc"
-DARK_GRAY: str = "#999"
-SOFT_BLACK: str = "#333"
-DARK_BLUE: str = "#1a1a2e"
-SOFT_DARK_BLUE: str = "#16213e"
+# Shared observatory-theme colors used by both image_viewer and rgb_composite
+# layouts. Hex mirrors the frontend Tailwind tokens (tailwind.config.ts): the
+# Plotly canvas must sit in the same near-black slate as the surrounding chrome.
+GRAY: str = "#e8e8ea"  # ink — title/font/centroid-label text
+DARK_GRAY: str = "#a2a3a8"  # ink-dim — axis tick color
+SOFT_BLACK: str = "#2f3138"  # border — axis gridcolor (faint)
+DARK_BLUE: str = "#0d0d0f"  # bg — plot_bgcolor (the canvas void)
+SOFT_DARK_BLUE: str = "#17181b"  # surface-1 — paper_bgcolor
 
 
 def _wcs_affine_meta(wcs: WCS | None, nx: int, ny: int) -> WcsAffineMeta | None:
@@ -90,7 +92,7 @@ def build_dark_axis_layout(
         plot_bgcolor=DARK_BLUE,
         paper_bgcolor=SOFT_DARK_BLUE,
         font=Font(color=GRAY),
-        margin=Margin(l=50, r=20, t=40, b=50),
+        margin=Margin(l=48, r=12, t=12, b=44),
         dragmode="pan",
         meta=LayoutMeta(
             imageBounds=ImageBoundsMeta(

@@ -1,134 +1,29 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="en" class="h-full">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Jellyscope — JWST Jellyfish Galaxy Explorer</title>
     <link rel="icon" type="image/x-icon" href="static/favicon.ico">
-    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-    <link rel="stylesheet" href="static/style.css">
+
+    {# Bootstrap data the frontend reads at startup (replaces inline const globals). #}
+    <script id="bootstrap" type="application/json">{{ bootstrap | tojson | safe }}</script>
+
+    {% if vite.is_dev %}
+    {# Dev: pull HMR client + entry module from the Vite dev server. #}
+    <script type="module" src="{{ vite.dev_server }}/@vite/client"></script>
+    <script type="module" src="{{ vite.dev_server }}/src/main.tsx"></script>
+    {% else %}
+    {# Built: manifest-resolved hashed assets, relative URLs (mixed-content safe). #}
+    {% for href in vite.css %}
+    <link rel="stylesheet" href="{{ href }}">
+    {% endfor %}
+    {% if vite.js %}
+    <script type="module" src="{{ vite.js }}"></script>
+    {% endif %}
+    {% endif %}
 </head>
-<body>
-    <header>
-        <h1>Jellyscope</h1>
-        <span class="subtitle">JWST Jellyfish Galaxy Explorer</span>
-    </header>
-
-    <main>
-        <!-- Left: Galaxy Viewer -->
-        <section id="viewer-section">
-            <div id="viewer-controls">
-                <label for="dataset-select">Dataset:</label>
-                <select id="dataset-select">
-                    {% for d in datasets %}
-                    <option value="{{ d }}" {% if d == default_dataset %}selected{% endif %}>{{ d }}</option>
-                    {% endfor %}
-                </select>
-
-                <label for="datacube-select">Datacube:</label>
-                <select id="datacube-select">
-                    {% for dc in datacubes %}
-                    <option value="{{ dc }}" {% if dc == default_datacube %}selected{% endif %}>{{ dc }}</option>
-                    {% endfor %}
-                </select>
-
-                <label for="stretch-select">Stretch:</label>
-                <select id="stretch-select">
-                    <option value="lupton_asinh" selected>Asinh (Lupton)</option>
-                    <option value="log">Log</option>
-                </select>
-
-                <span class="separator">|</span>
-
-                <button id="btn-view-single" class="view-btn active" data-view="single">Single</button>
-                <button id="btn-view-rgb" class="view-btn" data-view="rgb">RGB</button>
-
-                <span class="separator">|</span>
-
-                <div id="single-controls">
-                    <label for="filter-slider">Filter:</label>
-                    <input type="range" id="filter-slider" min="0" max="{{ filters|length - 1 }}" value="7" step="1">
-
-                    <label for="colorscale-select">Colors:</label>
-                    <select id="colorscale-select">
-                        <option value="Viridis" selected>Viridis</option>
-                        <option value="Inferno">Inferno</option>
-                        <option value="Plasma">Plasma</option>
-                        <option value="Cividis">Cividis</option>
-                        <option value="Hot">Hot</option>
-                        <option value="Greys">Greys</option>
-                    </select>
-                </div>
-
-                <div id="rgb-controls" style="display:none;">
-                    <label for="rgb-method">Method:</label>
-                    <select id="rgb-method">
-                        <option value="percentile_asinh" selected>Percentile Asinh</option>
-                        <option value="lupton">Lupton</option>
-                    </select>
-                    <label for="rgb-r">R:</label>
-                    <select id="rgb-r"></select>
-                    <label for="rgb-g">G:</label>
-                    <select id="rgb-g"></select>
-                    <label for="rgb-b">B:</label>
-                    <select id="rgb-b"></select>
-                    <span id="rgb-q-wrap">
-                        <label for="rgb-q">Q:</label>
-                        <input type="range" id="rgb-q" value="8" min="1" max="30" step="0.5">
-                        <span id="rgb-q-label">8.0</span>
-                    </span>
-                </div>
-
-                <span id="filter-label">{{ filters[7] }}</span>
-
-                <span class="separator">|</span>
-
-                <button id="btn-click" class="mode-btn active" data-mode="pan" title="Pan / Click to select clump">Pan</button>
-                <button id="btn-select" class="mode-btn" data-mode="select" title="Rectangle selection">Rect</button>
-                <button id="btn-lasso" class="mode-btn" data-mode="lasso" title="Lasso selection">Lasso</button>
-
-                <span class="separator">|</span>
-
-                <button id="btn-centroids" class="toggle-btn" title="Show/hide clump centroids">Centroids</button>
-                <button id="btn-boundaries" class="toggle-btn active" title="Show/hide clump boundaries">Boundaries</button>
-            </div>
-            <div id="galaxy-viewer"></div>
-            <div id="coord-readout" aria-live="polite"></div>
-        </section>
-
-        <!-- Resizer between viewer and right column -->
-        <div id="sidebar-resizer" title="Drag to resize"></div>
-
-        <!-- Right panels -->
-        <aside id="right-panels">
-            <!-- Properties -->
-            <section id="properties-panel">
-                <h2>Properties</h2>
-                <div id="properties-content">
-                    <p class="placeholder">Click on a clump to see its properties</p>
-                </div>
-            </section>
-
-            <!-- Clump List -->
-            <section id="clump-list-panel">
-                <h2>Clumps
-                    <select id="clump-filter" title="Filter clumps">
-                        <option value="">All</option>
-                        <option value="disk">Disk</option>
-                        <option value="outside">Outside</option>
-                    </select>
-                </h2>
-                <div id="clump-list"></div>
-            </section>
-        </aside>
-    </main>
-
-    <script>
-        const DEFAULT_DATASET = {{ default_dataset | tojson | safe }};
-        const DEFAULT_DATACUBE = {{ default_datacube | tojson | safe }};
-        const FILTERS = {{ filters | tojson | safe }};
-        const WAVELENGTHS = {{ wavelengths | tojson | safe }};
-    </script>
-    <script src="static/app.js"></script>
+<body class="h-full">
+    <div id="app" class="h-full"></div>
 </body>
 </html>

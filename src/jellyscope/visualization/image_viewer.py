@@ -28,9 +28,12 @@ from jellyscope.visualization._viz_helpers import (
     build_dark_axis_layout,
 )
 
-_RED: str = "#ff4444"
-_BLUE: str = "#00ccff"
-_WHITE: str = "#ffffff"
+# Clump overlay colors. MUST mirror frontend/src/theme.ts (CLUMP_SELECTED_COLOR
+# / CLUMP_COLOR / CENTROID_COLOR) — the client recolors these client-side on
+# selection, so a mismatch makes clumps flash a different color on select.
+_RED: str = "#ff5c5c"  # selected boundary (danger)
+_BLUE: str = "#4a9eff"  # unselected boundary (accent)
+_WHITE: str = "#e8e8ea"  # centroid marker (ink)
 
 
 def _estimate_background(data: np.ndarray) -> tuple[float, float]:
@@ -342,7 +345,6 @@ def build_viewer_figure(
 ) -> Figure:
     """Assembles heatmap + boundaries + centroids."""
     slice_data: np.ndarray = datacube.get_slice_by_channel_index(channel_index)
-    filter_name: str = datacube.filter_names[channel_index]
 
     has_sky = datacube.wcs is not None and datacube.wcs.has_celestial
     axis_label_x = "x offset (arcsec)" if has_sky else "x (pixels)"
@@ -359,7 +361,7 @@ def build_viewer_figure(
     data: list[PlotlyTrace] = [heatmap, *boundaries, centroids]
 
     layout = build_dark_axis_layout(
-        title_text=f"{datacube.name} — {filter_name}",
+        title_text="",
         axis_label_x=axis_label_x,
         axis_label_y=axis_label_y,
         bounds=bounds,

@@ -1,3 +1,13 @@
+FROM node:22-slim AS assets
+
+WORKDIR /ui
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+# Emits hashed bundle + manifest into ../src/... per vite.config outDir; we
+# redirect it into a local dist and copy it explicitly below.
+RUN npm run build -- --outDir dist --emptyOutDir
+
 FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim AS builder
 
 ENV UV_COMPILE_BYTECODE=1 \
@@ -31,6 +41,8 @@ WORKDIR /app
 
 COPY --from=builder --chown=jellyscope:jellyscope /app/.venv /app/.venv
 COPY --from=builder --chown=jellyscope:jellyscope /app/src /app/src
+# Built frontend bundle from the Node stage.
+COPY --from=assets --chown=jellyscope:jellyscope /ui/dist /app/src/jellyscope/web/static/dist
 
 RUN mkdir -p /data && chown -R jellyscope:jellyscope /data
 

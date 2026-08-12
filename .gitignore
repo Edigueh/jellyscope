@@ -19,3 +19,8 @@ htmlcov/
 *.fits
 .DS_Store
 .claude/
+
+# Frontend (Vite + npm)
+node_modules/
+npm-debug.log*
+frontend/dist/

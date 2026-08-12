@@ -10,6 +10,7 @@ from fastapi.templating import Jinja2Templates
 from jellyscope._bootstrap import ensure_data
 from jellyscope.config import JellyscopeConfig
 from jellyscope.data.data_store import DataStore
+from jellyscope.web.vite import load_vite_assets
 
 
 def create_app(config: JellyscopeConfig | None = None) -> FastAPI:
@@ -30,6 +31,9 @@ def create_app(config: JellyscopeConfig | None = None) -> FastAPI:
 
     static_dir = Path(__file__).parent / "static"
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+    # Resolve built (or dev-server) frontend assets once at startup.
+    app.state.vite = load_vite_assets(static_dir)
 
     template_dir = Path(__file__).parent / "templates"
     templates = Jinja2Templates(directory=str(template_dir))
