@@ -49,42 +49,60 @@ export function App(): JSX.Element {
   }, []);
 
   return (
-    <div class="relative h-full w-full overflow-hidden bg-bg">
-      {/* Canvas fills the shell; chrome floats over it. */}
-      <div class="absolute inset-0 flex">
-        <div ref={canvasRef} class="min-w-0 flex-1" />
-        {!state.railCollapsed && (
-          <div ref={railRef} class="relative flex">
-            <Resizer railRef={railRef} />
-            <div
-              class="flex h-full flex-col border-l border-border bg-surface-1"
-              style={{ width: "var(--sidebar-w, 380px)" }}
-            >
-              {/* Rail header: title + collapse control (nothing floats over it). */}
-              <div class="flex items-center justify-between border-b border-border px-3 py-2">
-                <span class="text-xs uppercase tracking-wide text-ink-dim/70">Inspector</span>
-                <button
-                  type="button"
-                  onClick={() => ctl.toggleRail()}
-                  title="Hide panels (])"
-                  aria-label="Hide panels"
-                  class="flex h-6 w-6 items-center justify-center rounded text-ink-dim hover:bg-surface-2 hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
-                >
-                  ›
-                </button>
-              </div>
-              <RightRail />
-            </div>
+    <div class="relative flex h-full w-full overflow-hidden bg-bg">
+      {/* Canvas column owns the floating chrome so it can never overlap the rail. */}
+      <div class="relative min-w-0 flex-1">
+        <div ref={canvasRef} class="h-full w-full" />
+
+        {/* Floating toolbar (top-left), confined to the canvas column. */}
+        <div class="pointer-events-none absolute inset-x-3 top-3 z-toolbar flex justify-start">
+          <Toolbar />
+        </div>
+
+        {/* Coordinate readout (bottom-left), mono. */}
+        <div
+          aria-live="polite"
+          class="glass tabular pointer-events-none absolute bottom-3 left-3 z-overlay min-h-[1.5rem] rounded-md px-2.5 py-1 text-sm text-ink-dim"
+          style={{ opacity: chrome.coordReadout ? 1 : 0, transition: "opacity 150ms" }}
+        >
+          {chrome.coordReadout || "—"}
+        </div>
+
+        {/* Loading bar (top edge of the canvas) while a figure fetches. */}
+        {chrome.loading && (
+          <div class="absolute inset-x-0 top-0 z-dropdown h-0.5 overflow-hidden bg-transparent">
+            <div class="h-full w-1/3 animate-[loading_1s_ease-in-out_infinite] bg-accent" />
           </div>
         )}
       </div>
 
-      {/* Floating toolbar (top-left). pointer-events on the panel, not the layer. */}
-      <div class="pointer-events-none absolute inset-x-3 top-3 z-toolbar flex justify-start">
-        <Toolbar />
-      </div>
+      {/* Docked rail — a sibling of the canvas column, never under the float. */}
+      {!state.railCollapsed && (
+        <div ref={railRef} class="relative flex">
+          <Resizer railRef={railRef} />
+          <div
+            class="flex h-full flex-col border-l border-border bg-surface-1"
+            style={{ width: "var(--sidebar-w, 380px)" }}
+          >
+            {/* Rail header: title + collapse control. */}
+            <div class="flex items-center justify-between border-b border-border px-3 py-2">
+              <span class="text-xs uppercase tracking-wide text-ink-dim/70">Inspector</span>
+              <button
+                type="button"
+                onClick={() => ctl.toggleRail()}
+                title="Hide panels (])"
+                aria-label="Hide panels"
+                class="flex h-6 w-6 items-center justify-center rounded text-ink-dim hover:bg-surface-2 hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+              >
+                ›
+              </button>
+            </div>
+            <RightRail />
+          </div>
+        </div>
+      )}
 
-      {/* When collapsed, a floating tab brings the rail back. */}
+      {/* When collapsed, a floating tab brings the rail back (pinned to viewport). */}
       {state.railCollapsed && (
         <button
           type="button"
@@ -95,22 +113,6 @@ export function App(): JSX.Element {
         >
           ‹
         </button>
-      )}
-
-      {/* Coordinate readout (bottom-left), mono. */}
-      <div
-        aria-live="polite"
-        class="glass tabular pointer-events-none absolute bottom-3 left-3 z-overlay min-h-[1.5rem] rounded-md px-2.5 py-1 text-sm text-ink-dim"
-        style={{ opacity: chrome.coordReadout ? 1 : 0, transition: "opacity 150ms" }}
-      >
-        {chrome.coordReadout || "—"}
-      </div>
-
-      {/* Loading bar (top edge) while a figure fetches. */}
-      {chrome.loading && (
-        <div class="absolute inset-x-0 top-0 z-dropdown h-0.5 overflow-hidden bg-transparent">
-          <div class="h-full w-1/3 animate-[loading_1s_ease-in-out_infinite] bg-accent" />
-        </div>
       )}
     </div>
   );
