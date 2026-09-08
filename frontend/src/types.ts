@@ -13,7 +13,7 @@ export interface ClumpListItem {
   y0: number;
   area_pix: number;
   component: string;
-  inside: boolean;
+  inside: boolean | null;
 }
 
 export interface DatasetsResponse {

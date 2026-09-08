@@ -137,3 +137,57 @@ class TestClumps:
             assert c.dec_deg is not None
             assert -90.0 <= c.dec_deg <= 90.0
             assert 0.0 <= c.ra_deg <= 360.0
+
+
+def test_new_schema_loads(tmp_path):
+    """New IC schema (mass/sfr_avg/...) lacks r_eff_arcsec, r_eff_kpc, inside.
+
+    Loader must accept the reduced column set and leave the missing fields
+    as ``None`` on the resulting ClumpProperties.
+    """
+    import pandas as pd
+
+    from jellyscope.data.model.clumps import ClumpCatalog
+
+    props_df = pd.DataFrame(
+        [
+            {
+                "clump_id": 1,
+                "mass": 8.5,
+                "logzsol": -0.3,
+                "dust2": 0.1,
+                "tage": 0.4,
+                "gas_logu": -2.5,
+                "area_kpc2": 0.02,
+                "component": "disk",
+                "sfr_avg": 0.005,
+                "ssfr_avg": 1.6e-10,
+                "area_pix": 5,
+                "area_arcsec2": 0.2,
+                "x0": 3.0,
+                "y0": 3.0,
+                "ra0": 3.6,
+                "dec0": -30.4,
+            }
+        ]
+    )
+    pixels_df = pd.DataFrame([{"clump_id": 1, "x": 3, "y": 3}, {"clump_id": 1, "x": 4, "y": 3}])
+    props_df.to_csv(tmp_path / "props.csv", index=False)
+    pixels_df.to_csv(tmp_path / "pixels.csv", index=False)
+
+    catalog = ClumpCatalog(tmp_path / "props.csv", tmp_path / "pixels.csv", (10, 10))
+    c = catalog.get_clump_by_id(1)
+
+    # Legacy-only fields absent → None.
+    assert c.r_eff_arcsec is None
+    assert c.r_eff_kpc is None
+    assert c.inside is None
+    # New schema fields populated.
+    assert c.mass == pytest.approx(8.5)
+    assert c.sfr_avg == pytest.approx(0.005)
+    assert c.ssfr_avg == pytest.approx(1.6e-10)
+    assert c.logzsol == pytest.approx(-0.3)
+
+    # ``inside`` filter must exclude None-valued clumps under either polarity.
+    assert catalog.filter_clumps(inside=True) == []
+    assert catalog.filter_clumps(inside=False) == []

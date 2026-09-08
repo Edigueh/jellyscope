@@ -192,3 +192,27 @@ def test_clump_detail_has_radec(client):
     assert "Dec (deg)" in by_label
     assert by_label["RA (deg)"] != "—"
     assert by_label["Dec (deg)"] != "—"
+
+
+def test_new_schema_dataset_returns_null_inside(client):
+    """abell2744_J1 uses the new IC schema (no ``inside`` column)."""
+    resp = client.get("/api/datasets/abell2744_J1/clumps")
+    assert resp.status_code == HTTPStatus.OK
+    clumps = resp.json()["clumps"]
+    assert clumps  # sanity
+    assert all(c["inside"] is None for c in clumps)
+
+
+def test_new_schema_dataset_detail_has_sed_rows(client):
+    """New-schema clump detail includes SED-fit rows (log M★, SFR, ...) and dashed R_eff."""
+    resp = client.get("/api/datasets/abell2744_J1/clumps")
+    first_id = resp.json()["clumps"][0]["clump_id"]
+
+    detail = client.get(f"/api/datasets/abell2744_J1/clumps/{first_id}")
+    assert detail.status_code == HTTPStatus.OK
+    by_label = {e["label"]: e["value"] for e in detail.json()["properties"]["entries"]}
+    assert by_label["Inside disk"] == "—"
+    assert by_label["R_eff (arcsec)"] == "—"
+    assert by_label["R_eff (kpc)"] == "—"
+    assert "log M★ (M☉)" in by_label
+    assert "SFR (M☉/yr)" in by_label

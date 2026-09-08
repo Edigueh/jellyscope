@@ -24,7 +24,7 @@ class ClumpListItem(BaseModel):
     y0: float
     area_pix: int
     component: str
-    inside: bool
+    inside: bool | None = None
 
 
 class DatacubesResponse(BaseModel):

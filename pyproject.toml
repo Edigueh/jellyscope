@@ -134,4 +134,4 @@ ignore_missing_imports = true
 
 [tool.codespell]
 skip = "*.fits,*.csv,*.lock,*.js,*.css,.git,htmlcov"
-ignore-words-list = "nd,astropy"
+ignore-words-list = "nd,astropy,tage"

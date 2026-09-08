@@ -21,34 +21,25 @@ logger = logging.getLogger(__name__)
 
 
 class ClumpProperties(BaseModel):
-    """
-    Container for the physical and geometric metadata of a single clump.
-
-    Attributes:
-        clump_id: Unique identifier for the detection.
-        area_pix: Total number of pixels belonging to the clump.
-        area_arcsec2: Physical area in square arcseconds.
-        r_eff_arcsec: Effective radius (half-light or geometric) in arcseconds.
-        x0, y0: Centroid coordinates in the pixel grid.
-        area_kpc2: Physical area in square kiloparsecs (cosmology-dependent).
-        r_eff_kpc: Effective radius in kiloparsecs.
-        inside: Boolean flag (e.g., if the clump is within a specific galactic radius).
-        component: Structural classification (e.g., 'disk', 'bulge', 'outlier').
-        ra_deg, dec_deg: Centroid sky coordinates in degrees. Populated by
-            ``ClumpCatalog.attach_skycoords`` when a celestial WCS is available;
-            ``None`` otherwise.
-    """
+    """Physical and geometric metadata of a single clump."""
 
     clump_id: int
     area_pix: int
     area_arcsec2: float
-    r_eff_arcsec: float
     x0: float
     y0: float
     area_kpc2: float
-    r_eff_kpc: float
-    inside: bool
     component: str
+    r_eff_arcsec: float | None = None
+    r_eff_kpc: float | None = None
+    inside: bool | None = None
+    mass: float | None = None
+    logzsol: float | None = None
+    dust2: float | None = None
+    tage: float | None = None
+    gas_logu: float | None = None
+    sfr_avg: float | None = None
+    ssfr_avg: float | None = None
     ra_deg: float | None = None
     dec_deg: float | None = None
 
@@ -75,19 +66,39 @@ class ClumpCatalog:
         # 1. Load summary properties
         props_df = pd.read_csv(properties_path)
         self.clumps: dict[int, ClumpProperties] = {}
+
+        def _opt_float(row: pd.Series, key: str) -> float | None:
+            if key not in row.index:
+                return None
+            v = row[key]
+            return None if pd.isna(v) else float(v)
+
+        def _opt_bool(row: pd.Series, key: str) -> bool | None:
+            if key not in row.index:
+                return None
+            v = row[key]
+            return None if pd.isna(v) else bool(v)
+
         for _, row in props_df.iterrows():
             cid = int(row["clump_id"])
             self.clumps[cid] = ClumpProperties(
                 clump_id=cid,
                 area_pix=int(row["area_pix"]),
                 area_arcsec2=float(row["area_arcsec2"]),
-                r_eff_arcsec=float(row["r_eff_arcsec"]),
                 x0=float(row["x0"]),
                 y0=float(row["y0"]),
                 area_kpc2=float(row["area_kpc2"]),
-                r_eff_kpc=float(row["r_eff_kpc"]),
-                inside=bool(row["inside"]),
                 component=str(row["component"]),
+                r_eff_arcsec=_opt_float(row, "r_eff_arcsec"),
+                r_eff_kpc=_opt_float(row, "r_eff_kpc"),
+                inside=_opt_bool(row, "inside"),
+                mass=_opt_float(row, "mass"),
+                logzsol=_opt_float(row, "logzsol"),
+                dust2=_opt_float(row, "dust2"),
+                tage=_opt_float(row, "tage"),
+                gas_logu=_opt_float(row, "gas_logu"),
+                sfr_avg=_opt_float(row, "sfr_avg"),
+                ssfr_avg=_opt_float(row, "ssfr_avg"),
             )
 
         # 2. Load and map pixel-level data
