@@ -4,13 +4,14 @@
 // dependency isn't worth it.
 // ponytail: hand-rolled pub/sub, swap for @preact/signals only if fine-grained
 // updates ever matter.
-import { resolveRgbDefaults } from "./viewer/rgb";
 import { readBootstrap } from "./bootstrap";
+import { resolveRgbDefaults } from "./viewer/rgb";
 
 export type ViewMode = "single" | "rgb";
 export type DragMode = "pan" | "select" | "lasso";
 
 export interface AppState {
+  datasets: string[];
   dataset: string;
   datacube: string;
   channel: number;
@@ -36,13 +37,11 @@ export interface AppState {
   railCollapsed: boolean;
 }
 
-const boot = readBootstrap();
-const initialRgb = resolveRgbDefaults(boot.filters, boot.wavelengths);
-
 export const state: AppState = {
-  dataset: boot.default_dataset,
-  datacube: boot.default_datacube,
-  channel: Math.min(7, Math.max(0, boot.filters.length - 1)),
+  datasets: [],
+  dataset: "",
+  datacube: "",
+  channel: 0,
   selectedClumps: new Set<number>(),
   colorscale: "Viridis",
   stretch: "lupton_asinh",
@@ -50,18 +49,35 @@ export const state: AppState = {
   showCentroids: false,
   showBoundaries: true,
   viewMode: "single",
-  rgbR: initialRgb.r,
-  rgbG: initialRgb.g,
-  rgbB: initialRgb.b,
+  rgbR: 0,
+  rgbG: 0,
+  rgbB: 0,
   rgbDeltaRG: null,
   rgbDeltaGB: null,
   rgbQ: 8,
   rgbMethod: "percentile_asinh",
-  filters: boot.filters.slice(),
-  datacubes: boot.datacubes.slice(),
-  wavelengths: boot.wavelengths,
+  filters: [],
+  datacubes: [],
+  wavelengths: {},
   railCollapsed: false,
 };
+
+// Populate `state` from the static manifest. main.tsx awaits this before
+// mounting the Preact tree — components can then read state synchronously.
+export async function initState(): Promise<void> {
+  const boot = await readBootstrap();
+  const initialRgb = resolveRgbDefaults(boot.filters, boot.wavelengths);
+  state.datasets = boot.datasets;
+  state.dataset = boot.default_dataset;
+  state.datacube = boot.default_datacube;
+  state.channel = Math.min(7, Math.max(0, boot.filters.length - 1));
+  state.rgbR = initialRgb.r;
+  state.rgbG = initialRgb.g;
+  state.rgbB = initialRgb.b;
+  state.filters = boot.filters.slice();
+  state.datacubes = boot.datacubes.slice();
+  state.wavelengths = boot.wavelengths;
+}
 
 type Listener = () => void;
 const listeners = new Set<Listener>();

@@ -1,26 +1,16 @@
 <!doctype html>
 <!--
-  Vite dev-server entry ONLY. The page actually served in production is the
-  Jinja template at src/jellyscope/web/templates/index.html, which injects the
-  bootstrap JSON and the manifest-resolved built assets. This file exists so
-  `vite` (dev) and `vite build` have an HTML input; it mirrors the mount points
-  the real template provides, with a stubbed bootstrap for standalone dev.
+  Vite entry. Serves two builds:
+  - default: source for the Jinja template at
+    src/jellyscope/web/templates/index.html (FastAPI path)
+  - VITE_STATIC=1: this HTML is the shipped production page for GitHub Pages.
+    Bootstrap comes from a fetch of ./data/manifest.json at runtime.
 -->
 <html lang="en" class="h-full">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Jellyscope — dev</title>
-    <script id="bootstrap" type="application/json">
-      {
-        "datasets": ["dev-galaxy"],
-        "default_dataset": "dev-galaxy",
-        "default_datacube": "nircam",
-        "datacubes": ["nircam", "nircam_matched"],
-        "filters": ["F090W", "F115W", "F150W", "F200W", "F277W", "F356W", "F444W", "F200W"],
-        "wavelengths": { "F090W": 0.9, "F115W": 1.154, "F150W": 1.501, "F200W": 1.99, "F277W": 2.786, "F356W": 3.563, "F444W": 4.421 }
-      }
-    </script>
+    <title>Jellyscope</title>
   </head>
   <body class="h-full">
     <div id="app" class="h-full"></div>
