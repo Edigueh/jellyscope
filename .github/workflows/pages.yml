@@ -43,12 +43,16 @@ jobs:
           uv sync --extra dev
           cd frontend && npm ci
 
-      # `_bootstrap.py` fetches data from Hugging Face on-demand — CI must
-      # be able to reach the Hub. Optional HF_TOKEN unlocks private repos.
+      # `_bootstrap.py` fetches data from Hugging Face on-demand — but only
+      # when `data/` is empty. The repo tracks CSVs (not FITS), so wipe the
+      # tracked stubs first to trigger a full snapshot download.
       - name: Fetch data + build static site
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: just static-build
+        run: |
+          rm -rf data
+          uv run python -c "from jellyscope._bootstrap import ensure_data; from pathlib import Path; ensure_data(Path('data'))"
+          just static-build
 
       - uses: actions/upload-pages-artifact@v3
         with:
