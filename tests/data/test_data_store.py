@@ -18,15 +18,30 @@ def _reset_store():
 def test_discovers_subdirectory_datasets(config):
     store = DataStore.get(config)
     names = store.list_datasets()
-    assert "A2744_F1228" in names
-    assert "A2744_HLS001428_302334" in names
-    assert "jellyfish_5" in names
+    assert "abell2744_J1" in names
+    assert "abell370_J1" in names
+    assert "macs0416_J1" in names
     assert store.default_dataset in names
 
 
-def test_dataset_with_only_matched_cube_loads(config):
-    store = DataStore.get(config)
-    ds = store.get_dataset("A2744_HLS001428_302334")
+def test_dataset_with_only_matched_cube_loads(config, tmp_path: Path):
+    """Datasets that ship only the matched cube must still load."""
+    # Build a tmp copy that only carries the matched cube + CSVs.
+    src = Path("data/abell2744_J1")
+    if not src.exists():
+        pytest.skip("real dataset not available")
+    only_matched = tmp_path / "only_matched"
+    only_matched.mkdir()
+    for fname in [
+        "cut_datacube_nircam_matched.fits",
+        "clumps_properties.csv",
+        "clumps_pixels.csv",
+    ]:
+        (only_matched / fname).symlink_to((src / fname).resolve())
+
+    cfg = JellyscopeConfig(data_dir=tmp_path)
+    store = DataStore(cfg)
+    ds = store.get_dataset("only_matched")
     assert NIRCAM_MATCHED in ds.datacubes
     assert NIRCAM not in ds.datacubes
     assert ds.clumps is not None
@@ -34,7 +49,7 @@ def test_dataset_with_only_matched_cube_loads(config):
 
 def test_dataset_with_both_cubes_loads(config):
     store = DataStore.get(config)
-    ds = store.get_dataset("A2744_F1228")
+    ds = store.get_dataset("abell2744_J1")
     assert NIRCAM in ds.datacubes
     assert NIRCAM_MATCHED in ds.datacubes
 
@@ -70,8 +85,8 @@ def test_subdir_missing_csvs_skipped(tmp_path: Path):
 
 def test_flat_layout_fallback_uses_default_name(tmp_path: Path, monkeypatch):
     # Build a tmp dir mirroring the project's flat data dir by symlinking
-    # the necessary files from the real data dir's A2744_F1228 subdir.
-    src = Path("data/A2744_F1228")
+    # the necessary files from a real dataset subdir.
+    src = Path("data/abell2744_J1")
     if not src.exists():
         pytest.skip("real dataset not available")
     for fname in [

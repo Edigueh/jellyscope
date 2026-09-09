@@ -4,7 +4,7 @@ from http import HTTPStatus
 
 import pytest
 
-DS = "A2744_F1228"
+DS = "abell2744_J1"
 BASE = f"/api/datasets/{DS}"
 
 
@@ -52,7 +52,7 @@ def test_viewer_figure(client):
 def test_list_clumps(client):
     resp = client.get(f"{BASE}/clumps")
     data = resp.json()
-    assert len(data["clumps"]) == 23
+    assert len(data["clumps"]) == 53
 
     resp = client.get(f"{BASE}/clumps?component=disk")
     data = resp.json()
@@ -69,19 +69,18 @@ def test_get_clump_detail(client):
 
 
 def test_pixel_clump_lookup(client):
-    resp = client.get(f"{BASE}/pixel/72/20/clump")
+    # Clump 0 in abell2744_J1 covers pixel (85, 25).
+    resp = client.get(f"{BASE}/pixel/85/25/clump")
     data = resp.json()
     assert data["clump_id"] == 0
 
 
-def test_list_clumps_with_inside_filter(client):
+def test_list_clumps_with_inside_filter_returns_empty_for_new_schema(client):
+    # New IC schema has no ``inside`` column → inside filter excludes all clumps.
     resp = client.get(f"{BASE}/clumps?inside=true")
-    data = resp.json()
-    assert all(c["inside"] is True for c in data["clumps"])
-
+    assert resp.json()["clumps"] == []
     resp = client.get(f"{BASE}/clumps?inside=false")
-    data = resp.json()
-    assert all(c["inside"] is False for c in data["clumps"])
+    assert resp.json()["clumps"] == []
 
 
 def test_viewer_all_nan():
@@ -89,12 +88,12 @@ def test_viewer_all_nan():
 
     import numpy as np
 
-    nan_slice = np.full((221, 172), np.nan)
+    nan_slice = np.full((146, 192), np.nan)
     with patch("jellyscope.visualization.image_viewer.DataCube") as _:
         from jellyscope.visualization.image_viewer import _normalize_stretch
 
         result = _normalize_stretch(nan_slice)
-        assert result.shape == (221, 172)
+        assert result.shape == (146, 192)
 
 
 def test_viewer_stretch_lupton_asinh(client):
@@ -149,7 +148,7 @@ def test_clump_separations(client):
     resp = client.get(f"{BASE}/clumps/separations")
     assert resp.status_code == HTTPStatus.OK
     data = resp.json()
-    n = 23
+    n = 53
     assert len(data["pairs"]) == n * (n - 1) // 2
     assert data["distance_mpc"] is None
     for pair in data["pairs"]:

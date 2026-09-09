@@ -28,37 +28,37 @@ def _load_json(path: Path) -> dict:
 
 
 def test_viewer_parity(client, baked: Path) -> None:
-    resp = client.get("/api/datasets/A2744_F1228/viewer/nircam/7?stretch=log")
+    resp = client.get("/api/datasets/abell2744_J1/viewer/nircam/7?stretch=log")
     assert resp.status_code == HTTPStatus.OK
-    baked_payload = _load_json(baked / "A2744_F1228" / "viewer" / "nircam" / "log" / "7.json")
+    baked_payload = _load_json(baked / "abell2744_J1" / "viewer" / "nircam" / "log" / "7.json")
     assert resp.json() == baked_payload
 
 
 def test_rgb_parity(client, baked: Path) -> None:
-    resp = client.get("/api/datasets/A2744_F1228/viewer/nircam/rgb?r=17&g=7&b=0")
+    resp = client.get("/api/datasets/abell2744_J1/viewer/nircam/rgb?r=17&g=7&b=0")
     assert resp.status_code == HTTPStatus.OK
-    baked_payload = _load_json(baked / "A2744_F1228" / "rgb" / "nircam" / "17-7-0.json")
+    baked_payload = _load_json(baked / "abell2744_J1" / "rgb" / "nircam" / "17-7-0.json")
     assert resp.json() == baked_payload
 
 
 def test_clump_detail_parity(client, baked: Path) -> None:
-    resp = client.get("/api/datasets/A2744_F1228/clumps/0")
+    resp = client.get("/api/datasets/abell2744_J1/clumps/0")
     assert resp.status_code == HTTPStatus.OK
-    baked_payload = _load_json(baked / "A2744_F1228" / "clump" / "0.json")
+    baked_payload = _load_json(baked / "abell2744_J1" / "clump" / "0.json")
     assert resp.json() == baked_payload
 
 
 def test_clumps_list_parity(client, baked: Path) -> None:
-    resp = client.get("/api/datasets/A2744_F1228/clumps")
+    resp = client.get("/api/datasets/abell2744_J1/clumps")
     assert resp.status_code == HTTPStatus.OK
-    baked_payload = _load_json(baked / "A2744_F1228" / "clumps.json")
+    baked_payload = _load_json(baked / "abell2744_J1" / "clumps.json")
     assert resp.json() == baked_payload
 
 
 def test_separations_parity(client, baked: Path) -> None:
-    resp = client.get("/api/datasets/A2744_F1228/clumps/separations")
+    resp = client.get("/api/datasets/abell2744_J1/clumps/separations")
     assert resp.status_code == HTTPStatus.OK
-    baked_payload = _load_json(baked / "A2744_F1228" / "separations.json")
+    baked_payload = _load_json(baked / "abell2744_J1" / "separations.json")
     assert resp.json() == baked_payload
 
 

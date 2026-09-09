@@ -14,30 +14,31 @@ class TestClumps:
     @pytest.fixture(autouse=True)
     def setup(self, store: DataStore):
         self.store: DataStore = store
-        self.clumps = store.get_dataset("A2744_F1228").clumps
+        self.clumps = store.get_dataset("abell2744_J1").clumps
 
     def test_clump_count(self):
-        assert len(self.clumps.list_clumps()) == 23
+        assert len(self.clumps.list_clumps()) == 53
 
     def test_clump_properties(self):
         cid: int = 0
         c: ClumpProperties = self.clumps.get_clump_by_id(cid)
         assert c.clump_id == cid
-        assert c.area_pix == 121
-        assert c.component == "outside"
-        assert c.inside is False
+        assert c.area_pix == 8
+        assert c.component == "disk"
+        # New IC schema — the ``inside`` field isn't provided.
+        assert c.inside is None
 
     def test_pixel_mask(self):
         cid: int = 0
         c: ClumpProperties = self.clumps.get_clump_by_id(cid)
         mask: np.ndarray = self.clumps.get_pixel_mask(cid)
-        assert mask.shape == (221, 172)
+        assert mask.shape == (146, 192)
         assert mask.dtype == bool
         assert mask.sum() == c.area_pix
 
     def test_clump_at_pixel(self):
-        # Clump 0 centroid is near (71.8, 19.9)
-        cid: int = self.clumps.get_clump_id_at_pixel(72, 20)
+        # Clump 0 centroid is near (86.75, 26.5); pixel (85, 25) is inside its mask.
+        cid: int = self.clumps.get_clump_id_at_pixel(85, 25)
         assert cid == 0
 
     def test_no_clump_at_empty_pixel(self):
@@ -57,16 +58,14 @@ class TestClumps:
             logging.info(c.component)
         assert all(c.component == "disk" for c in disk)
         assert all(c.component == "outside" for c in outside)
-        assert len(disk) + len(outside) == 23
+        # Every clump in this dataset is either disk or outside.
+        assert len(disk) + len(outside) == 53
 
-    def test_filter_by_inside(self):
-        inside: list[ClumpProperties] = self.clumps.filter_clumps(inside=True)
-        outside: list[ClumpProperties] = self.clumps.filter_clumps(inside=False)
-        for c in inside:
-            logging.info(c.component)
-        assert all(c.inside is True for c in inside)
-        assert all(c.inside is False for c in outside)
-        assert len(inside) + len(outside) == 23
+    def test_filter_by_inside_excludes_none(self):
+        # New IC schema has no ``inside`` column → every clump is None →
+        # both filter polarities must return an empty list.
+        assert self.clumps.filter_clumps(inside=True) == []
+        assert self.clumps.filter_clumps(inside=False) == []
 
     def test_pixel_out_of_bounds(self):
         assert self.clumps.get_clump_id_at_pixel(-1, -1) is None
@@ -79,7 +78,7 @@ class TestClumps:
 
     def test_get_all_boundaries(self):
         boundaries = self.clumps.get_all_boundaries()
-        assert len(boundaries.keys()) == 23
+        assert len(boundaries.keys()) == 53
 
     def test_small_clump_boundary(self, tmp_path):
         import pandas as pd
@@ -130,7 +129,7 @@ class TestClumps:
         # DataStore attaches RA/Dec on load when WCS is celestial.
         coords = self.clumps.centroid_skycoords()
         assert coords is not None
-        assert len(coords) == 23
+        assert len(coords) == 53
 
         for c in self.clumps.list_clumps():
             assert c.ra_deg is not None

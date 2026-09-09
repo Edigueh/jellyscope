@@ -15,13 +15,13 @@ class TestDatacube:
     @pytest.fixture(autouse=True)
     def setup(self, store: DataStore):
         self.store: DataStore = store
-        self.ds = store.get_dataset("A2744_F1228")
+        self.ds = store.get_dataset("abell2744_J1")
         self.dc: DataCube = self.ds.get_datacube("nircam")
 
     def test_datacube_loads_shape(self):
         assert self.dc.n_channels == 20
-        assert self.dc.ny == 221
-        assert self.dc.nx == 172
+        assert self.dc.ny == 146
+        assert self.dc.nx == 192
 
     def test_filter_names_from_header(self):
         assert self.dc.filter_names[0] == "F070W"
@@ -30,7 +30,7 @@ class TestDatacube:
 
     def test_get_slice_by_channel_index(self):
         s: np.ndarray = self.dc.get_slice_by_channel_index(0)
-        assert s.shape == (221, 172)
+        assert s.shape == (146, 192)
         assert s.dtype == np.float64
 
     def test_both_datacubes_available(self):
@@ -52,7 +52,7 @@ class TestDatacube:
         self.dc.header[filter_to_delete] = original_filter
 
     def test_spatial_shape(self):
-        assert self.dc.spatial_shape == (221, 172)
+        assert self.dc.spatial_shape == (146, 192)
 
     def test_get_datacube_unknown_name(self):
         with pytest.raises(KeyError, match="Unknown datacube"):
