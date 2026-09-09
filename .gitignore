@@ -16,7 +16,6 @@ env/
 .mypy_cache/
 htmlcov/
 .coverage
-*.fits
 .DS_Store
 .claude/
 
@@ -24,3 +23,7 @@ htmlcov/
 node_modules/
 npm-debug.log*
 frontend/dist/
+src/jellyscope/web/static/dist/
+
+# Static site build output for GitHub Pages (built in CI)
+site/

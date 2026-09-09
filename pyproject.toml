@@ -87,6 +87,9 @@ ignore = [
 "src/jellyscope/cli.py" = [
     "T201",   # print is the CLI output mechanism
 ]
+"scripts/**/*.py" = [
+    "T201",   # print is the CLI-style output mechanism for build scripts
+]
 "src/jellyscope/web/routes.py" = [
     "ARG001", # FastAPI path/query params sometimes appear unused
 ]
@@ -103,6 +106,7 @@ docstring-code-format = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 addopts = [
     "--cov=src/jellyscope",
     "--cov-report=term-missing",

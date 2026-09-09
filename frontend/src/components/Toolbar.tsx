@@ -195,13 +195,11 @@ export function Toolbar(): JSX.Element {
   );
 }
 
-// Dataset / datacube option lists. Datasets are fixed (from bootstrap);
-// datacubes live in reactive state (setDataset refreshes them).
-import { readBootstrap } from "../bootstrap";
-const boot = readBootstrap();
-
+// Dataset / datacube option lists. Both live in reactive state — datasets is
+// populated once at boot from the static manifest; datacubes refreshes when
+// setDataset runs.
 function datasetOptions(): JSX.Element[] {
-  return boot.datasets.map((d) => (
+  return state.datasets.map((d) => (
     <option key={d} value={d}>
       {d}
     </option>
