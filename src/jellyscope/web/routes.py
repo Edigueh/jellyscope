@@ -254,5 +254,6 @@ def get_clump(dataset_name: str, clump_id: int) -> ClumpDetailResponse:
 @router.get("/api/datasets/{dataset_name}/pixel/{x}/{y}/clump", response_model=PixelClumpResponse)
 def get_pixel_clump(dataset_name: str, x: int, y: int) -> PixelClumpResponse:
     _, clumps = _dataset_clumps(dataset_name)
-    cid = clumps.get_clump_id_at_pixel(x, y)
-    return PixelClumpResponse(clump_id=cid)
+    ambiguous = clumps.is_ambiguous_pixel(x, y)
+    cid = None if ambiguous else clumps.get_clump_id_at_pixel(x, y)
+    return PixelClumpResponse(clump_id=cid, ambiguous=ambiguous)

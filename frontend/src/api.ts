@@ -127,9 +127,11 @@ export const api = {
 
   pixelClump: async (ds: string, x: number, y: number): Promise<PixelClumpResponse> => {
     const grid = await loadPixelIndex(ds);
-    if (x < 0 || x >= grid.nx || y < 0 || y >= grid.ny) return { clump_id: null };
+    if (x < 0 || x >= grid.nx || y < 0 || y >= grid.ny) {
+      return { clump_id: null, ambiguous: false };
+    }
     const v = grid.data[y * grid.nx + x];
-    return { clump_id: v >= 0 ? v : null };
+    return { clump_id: v >= 0 ? v : null, ambiguous: v === -2 };
   },
 
   viewerSingle: async (

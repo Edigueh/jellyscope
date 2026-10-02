@@ -7,10 +7,12 @@ tmp path, then compares three anchor payloads against the TestClient.
 
 from __future__ import annotations
 
+import gzip
 import json
 from http import HTTPStatus
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from scripts.prebake import bake
@@ -53,6 +55,14 @@ def test_clumps_list_parity(client, baked: Path) -> None:
     assert resp.status_code == HTTPStatus.OK
     baked_payload = _load_json(baked / "abell2744_J1" / "clumps.json")
     assert resp.json() == baked_payload
+
+
+def test_prebaked_ambiguous_pixel(baked: Path) -> None:
+    with gzip.open(baked / "abell2744_J1" / "pixel_index.bin.gz", "rb") as fh:
+        raw = fh.read()
+    ny, nx = np.frombuffer(raw[:8], dtype=np.int32)
+    grid = np.frombuffer(raw[8:], dtype=np.int16).reshape((ny, nx))
+    assert grid[74, 167] == -2
 
 
 def test_separations_parity(client, baked: Path) -> None:

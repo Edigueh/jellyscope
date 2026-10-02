@@ -70,6 +70,7 @@ class PixelClumpResponse(BaseModel):
     """Result of looking up which clump a pixel belongs to."""
 
     clump_id: int | None
+    ambiguous: bool = False
 
 
 class RGBViewerResponse(BaseModel):

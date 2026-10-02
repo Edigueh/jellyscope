@@ -214,10 +214,14 @@ export async function setClumpFilter(filter: string): Promise<void> {
 // --- Selection + panels ---
 
 export async function handlePixel(x: number, y: number): Promise<void> {
-  const { clump_id } = await api.pixelClump(state.dataset, x, y);
-  if (clump_id === null) {
+  const { clump_id, ambiguous } = await api.pixelClump(state.dataset, x, y);
+  if (ambiguous) {
     chrome.detail = null;
-    chrome.coordReadout = `pixel (${x}, ${y}) — no clump`;
+    chrome.coordReadout = "pixel (" + x + ", " + y + ") — ambiguous clump overlap";
+    emitChange();
+  } else if (clump_id === null) {
+    chrome.detail = null;
+    chrome.coordReadout = "pixel (" + x + ", " + y + ") — no clump";
     emitChange();
   } else {
     await toggleClump(clump_id);

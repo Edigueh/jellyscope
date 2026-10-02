@@ -1,5 +1,7 @@
 """Format clump properties for displaying it with Plotly."""
 
+import math
+
 from jellyscope.data.model.clumps import ClumpProperties
 from jellyscope.model.display import ClumpDetailDisplay, DisplayEntry
 
@@ -33,8 +35,10 @@ def format_clump_properties(clump: ClumpProperties) -> ClumpDetailDisplay:
         ("Dec (deg)", dec_str),
     ]
 
+    if clump.mass is not None and clump.mass > 0:
+        rows.append(("log M★ (M☉)", f"{math.log10(clump.mass):.3f}"))
+
     sed_rows: list[tuple[str, str, str]] = [
-        ("log M★ (M☉)", "mass", ".3f"),
         ("SFR (M☉/yr)", "sfr_avg", ".4f"),
         ("sSFR (yr⁻¹)", "ssfr_avg", ".3e"),
         ("log Z/Z☉", "logzsol", ".3f"),

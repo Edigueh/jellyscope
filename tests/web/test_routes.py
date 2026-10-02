@@ -73,6 +73,13 @@ def test_pixel_clump_lookup(client):
     resp = client.get(f"{BASE}/pixel/85/25/clump")
     data = resp.json()
     assert data["clump_id"] == 0
+    assert data["ambiguous"] is False
+
+
+def test_ambiguous_pixel_lookup(client):
+    resp = client.get(f"{BASE}/pixel/167/74/clump")
+    assert resp.status_code == HTTPStatus.OK
+    assert resp.json() == {"clump_id": None, "ambiguous": True}
 
 
 def test_list_clumps_with_inside_filter_returns_empty_for_new_schema(client):
@@ -214,4 +221,7 @@ def test_new_schema_dataset_detail_has_sed_rows(client):
     assert by_label["R_eff (arcsec)"] == "—"
     assert by_label["R_eff (kpc)"] == "—"
     assert "log M★ (M☉)" in by_label
+    mass_detail = client.get(f"/api/datasets/{DS}/clumps/11")
+    mass_entries = {e["label"]: e["value"] for e in mass_detail.json()["properties"]["entries"]}
+    assert mass_entries["log M★ (M☉)"] == "6.478"
     assert "SFR (M☉/yr)" in by_label

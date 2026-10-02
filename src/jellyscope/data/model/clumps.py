@@ -106,6 +106,7 @@ class ClumpCatalog:
         self._pixels_masks: dict[int, np.ndarray] = {}
         # _clump_map is a 2D grid where each cell contains the ID of the clump occupying it.
         self._clump_map = np.full(spatial_shape, -1, dtype=np.int32)
+        self._ambiguous_pixels: set[tuple[int, int]] = set()
 
         all_xs = pixels_df["x"].to_numpy(dtype=np.int64)
         all_ys = pixels_df["y"].to_numpy(dtype=np.int64)
@@ -118,7 +119,13 @@ class ClumpCatalog:
             ys_cid = all_ys[sel]
             mask = np.zeros(spatial_shape, dtype=bool)
             mask[ys_cid, xs_cid] = True
-            self._clump_map[ys_cid, xs_cid] = cid
+            for x, y in zip(xs_cid, ys_cid, strict=True):
+                current = self._clump_map[y, x]
+                if current == -1:
+                    self._clump_map[y, x] = cid
+                elif current >= 0 and current != cid:
+                    self._ambiguous_pixels.add((int(x), int(y)))
+                    self._clump_map[y, x] = -2
             self._pixels_masks[cid] = mask
 
         # Lazy-loaded cache for geometric boundaries
@@ -141,6 +148,10 @@ class ClumpCatalog:
             val = self._clump_map[y, x]
             return int(val) if val >= 0 else None
         return None
+
+    def is_ambiguous_pixel(self, x: int, y: int) -> bool:
+        """Return whether more than one clump claims a pixel."""
+        return (x, y) in self._ambiguous_pixels
 
     def get_boundary_coords(self, clump_id: int) -> list[tuple[float, float]]:
         """Calculates the outer boundary of a clump for plotting or region selection.

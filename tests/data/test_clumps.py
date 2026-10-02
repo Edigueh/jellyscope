@@ -1,9 +1,13 @@
 """Tests for clump catalog."""
 
 import logging
+from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pytest
+from astropy.io import fits
+from astropy.wcs import WCS
 
 from jellyscope.data.data_store import DataStore
 from jellyscope.data.model.clumps import ClumpProperties
@@ -44,6 +48,11 @@ class TestClumps:
     def test_no_clump_at_empty_pixel(self):
         cid: int = self.clumps.get_clump_id_at_pixel(0, 0)
         assert cid is None
+        assert not self.clumps.is_ambiguous_pixel(0, 0)
+
+    def test_ambiguous_pixel_is_not_assigned(self):
+        assert self.clumps.get_clump_id_at_pixel(167, 74) is None
+        assert self.clumps.is_ambiguous_pixel(167, 74)
 
     def test_boundary_coords(self):
         boundary: list[tuple[float, float]] = self.clumps.get_boundary_coords(0)
@@ -190,3 +199,18 @@ def test_new_schema_loads(tmp_path):
     # ``inside`` filter must exclude None-valued clumps under either polarity.
     assert catalog.filter_clumps(inside=True) == []
     assert catalog.filter_clumps(inside=False) == []
+
+
+def test_catalog_sky_columns_match_zero_based_wcs():
+    for root in sorted(Path("data").iterdir()):
+        props_path = root / "clumps_properties.csv"
+        fits_path = root / "cut_datacube_nircam.fits"
+        if not (root.is_dir() and props_path.exists() and fits_path.exists()):
+            continue
+        props = pd.read_csv(props_path)
+        with fits.open(fits_path) as hdul:
+            sky = WCS(hdul[0].header, naxis=2).pixel_to_world(
+                props["x0"].to_numpy(), props["y0"].to_numpy()
+            )
+        assert np.allclose(sky.ra.deg, props["ra0"].to_numpy(), atol=1e-12)
+        assert np.allclose(sky.dec.deg, props["dec0"].to_numpy(), atol=1e-12)

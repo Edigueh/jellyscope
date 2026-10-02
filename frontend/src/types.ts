@@ -41,6 +41,7 @@ export interface ClumpDetailResponse {
 
 export interface PixelClumpResponse {
   clump_id: number | null;
+  ambiguous: boolean;
 }
 
 export interface ClumpSeparation {
