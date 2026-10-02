@@ -14,6 +14,7 @@ import type {
   RGBViewerResponse,
   ViewerResponse,
 } from "./types";
+import { composeRgb, rgbToPngDataUrl } from "./viewer/rgbComposite";
 
 export class ApiError extends Error {
   constructor(
@@ -64,6 +65,41 @@ interface PixelIndex {
 }
 const pixelIndexCache = new Map<string, Promise<PixelIndex>>();
 
+interface ChannelCube {
+  nChannels: number;
+  ny: number;
+  nx: number;
+  data: Float64Array;
+}
+
+const channelCubeCache = new Map<string, Promise<ChannelCube>>();
+const rgbTemplateCache = new Map<string, Promise<RGBViewerResponse>>();
+
+async function loadChannelCube(dataset: string, datacube: string): Promise<ChannelCube> {
+  const key = `${dataset}/${datacube}`;
+  const hit = channelCubeCache.get(key);
+  if (hit) return hit;
+  const p = (async () => {
+    const url = `${dsPath(dataset)}/channels/${encodeURIComponent(datacube)}.bin.gz`;
+    const resp = await fetch(url);
+    if (!resp.ok || !resp.body) throw new ApiError(resp.status, url);
+    const stream = resp.body.pipeThrough(new DecompressionStream("gzip"));
+    const buf = await new Response(stream).arrayBuffer();
+    const header = new Int32Array(buf, 0, 4);
+    const [version, nChannels, ny, nx] = header;
+    if (version !== 1 || nChannels <= 0 || ny <= 0 || nx <= 0) {
+      throw new ApiError(500, `${url} header`);
+    }
+    const count = nChannels * ny * nx;
+    if (buf.byteLength !== 16 + count * Float64Array.BYTES_PER_ELEMENT) {
+      throw new ApiError(500, `${url} size`);
+    }
+    return { nChannels, ny, nx, data: new Float64Array(buf, 16, count) };
+  })();
+  channelCubeCache.set(key, p);
+  return p;
+}
+
 async function loadPixelIndex(dataset: string): Promise<PixelIndex> {
   const hit = pixelIndexCache.get(dataset);
   if (hit) return hit;
@@ -82,24 +118,17 @@ async function loadPixelIndex(dataset: string): Promise<PixelIndex> {
   return p;
 }
 
-function pickRgbKey(meta: DatasetMeta, datacube: string, r: number, g: number, b: number): string {
-  const presets = meta.rgb_presets[datacube] ?? [];
-  if (presets.length === 0) throw new ApiError(404, `no rgb presets for ${datacube}`);
-  // Exact match first.
-  const exact = presets.find((p) => p.r === r && p.g === g && p.b === b);
-  if (exact) return exact.key;
-  // Nearest by squared filter-index distance — snaps arbitrary state to a
-  // baked triple so the UI stays functional even when the user drags.
-  let best = presets[0];
-  let bestDist = Infinity;
-  for (const p of presets) {
-    const d = (p.r - r) ** 2 + (p.g - g) ** 2 + (p.b - b) ** 2;
-    if (d < bestDist) {
-      bestDist = d;
-      best = p;
-    }
-  }
-  return best.key;
+function loadRgbTemplate(meta: DatasetMeta, dataset: string, datacube: string): Promise<RGBViewerResponse> {
+  const key = `${dataset}/${datacube}`;
+  const hit = rgbTemplateCache.get(key);
+  if (hit) return hit;
+  const preset = meta.rgb_presets[datacube]?.[0];
+  if (!preset) throw new ApiError(404, `no rgb presets for ${datacube}`);
+  const p = getJSON<RGBViewerResponse>(
+    `${dsPath(dataset)}/rgb/${encodeURIComponent(datacube)}/${preset.key}.json`,
+  );
+  rgbTemplateCache.set(key, p);
+  return p;
 }
 
 export const api = {
@@ -140,12 +169,13 @@ export const api = {
     channel: number,
     params: { selected: string; colorscale: string; stretch: string },
   ): Promise<ViewerResponse> => {
-    // Baked stretches only; anything else falls back to log.
     const meta = await getDatasetMeta(ds);
     const stretch = meta.stretches.includes(params.stretch) ? params.stretch : "log";
-    return getJSON<ViewerResponse>(
+    const payload = await getJSON<ViewerResponse>(
       `${dsPath(ds)}/viewer/${encodeURIComponent(datacube)}/${stretch}/${channel}.json`,
     );
+    payload.figure.data[0].colorscale = params.colorscale;
+    return payload;
   },
 
   viewerRGB: async (
@@ -161,9 +191,38 @@ export const api = {
     },
   ): Promise<RGBViewerResponse> => {
     const meta = await getDatasetMeta(ds);
-    const key = pickRgbKey(meta, datacube, params.r, params.g, params.b);
-    return getJSON<RGBViewerResponse>(
-      `${dsPath(ds)}/rgb/${encodeURIComponent(datacube)}/${key}.json`,
+    const cube = await loadChannelCube(ds, datacube);
+    const indices = [params.r, params.g, params.b];
+    if (indices.some((index) => index < 0 || index >= cube.nChannels)) {
+      throw new ApiError(400, `${ds}/${datacube} RGB channels`);
+    }
+    const planeSize = cube.ny * cube.nx;
+    const template = await loadRgbTemplate(meta, ds, datacube);
+    const rgb = composeRgb(
+      cube.data.subarray(params.r * planeSize, (params.r + 1) * planeSize),
+      cube.data.subarray(params.g * planeSize, (params.g + 1) * planeSize),
+      cube.data.subarray(params.b * planeSize, (params.b + 1) * planeSize),
+      params.method === "lupton" ? "lupton" : "percentile_asinh",
+      params.softening,
     );
+    const figure = {
+      ...template.figure,
+      layout: {
+        ...template.figure.layout,
+        images: (template.figure.layout.images as Record<string, unknown>[]).map(
+          (image: Record<string, unknown>, index: number) =>
+            index === 0
+              ? { ...image, source: rgbToPngDataUrl(rgb, cube.nx, cube.ny) }
+              : image,
+        ),
+      },
+    };
+    const filters = meta.filters[datacube];
+    return {
+      figure,
+      r_filter: filters[params.r].name,
+      g_filter: filters[params.g].name,
+      b_filter: filters[params.b].name,
+    };
   },
 };

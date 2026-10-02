@@ -15,6 +15,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from jellyscope.data.model.datacube import DataCube
 from scripts.prebake import bake
 
 
@@ -63,6 +64,18 @@ def test_prebaked_ambiguous_pixel(baked: Path) -> None:
     ny, nx = np.frombuffer(raw[:8], dtype=np.int32)
     grid = np.frombuffer(raw[8:], dtype=np.int16).reshape((ny, nx))
     assert grid[74, 167] == -2
+
+
+def test_prebaked_channel_cube(baked: Path) -> None:
+    path = baked / "abell2744_J1" / "channels" / "nircam.bin.gz"
+    with gzip.open(path, "rb") as fh:
+        raw = fh.read()
+
+    header = np.frombuffer(raw[:16], dtype="<i4")
+    assert header.tolist() == [1, 20, 146, 192]
+    payload = np.frombuffer(raw[16:], dtype="<f8").reshape(tuple(header[1:]))
+    expected = DataCube("data/abell2744_J1/cut_datacube_nircam.fits").data
+    np.testing.assert_array_equal(payload, expected)
 
 
 def test_separations_parity(client, baked: Path) -> None:

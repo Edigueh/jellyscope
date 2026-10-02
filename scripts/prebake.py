@@ -2,8 +2,9 @@
 
 Walks the ``DataStore``, calls the existing visualization builders once per
 (dataset, cube, channel, stretch) and per (dataset, cube, RGB preset), and
-writes the resulting Plotly figure dicts as gzipped JSON. Emits everything
-under ``--out`` in a layout the static frontend expects — see
+writes the resulting Plotly figure dicts as gzipped JSON plus raw channel
+cubes for client-side RGB rendering. Emits everything under ``--out`` in a
+layout the static frontend expects — see
 ``docs/data/manifest.json``.
 
 Byte-for-byte compatibility with the live FastAPI responses is a design
@@ -71,6 +72,18 @@ def _write_json(path: Path, payload: dict[str, Any]) -> int:
     raw = json.dumps(payload, separators=(",", ":")).encode("utf-8")
     path.write_bytes(raw)
     return len(raw)
+
+
+def _bake_channels(out: Path, dataset: str, cube_name: str, dc: DataCube) -> int:
+    """Write the raw channel cube used by the static RGB compositor."""
+    header = np.array([1, dc.n_channels, dc.ny, dc.nx], dtype="<i4").tobytes()
+    payload = np.asarray(dc.data, dtype="<f8").tobytes(order="C")
+    path = out / dataset / "channels" / f"{cube_name}.bin.gz"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with gzip.open(path, "wb", compresslevel=6) as fh:
+        fh.write(header)
+        fh.write(payload)
+    return path.stat().st_size
 
 
 def _preset_indices(dc: DataCube, preset: tuple[str, str, str]) -> tuple[int, int, int] | None:
@@ -268,6 +281,7 @@ def bake(data_dir: Path, out_dir: Path) -> BakeStats:
         assert ds.clumps is not None  # DataStore filters out clump-less dirs.
         rgb_by_cube: dict[str, list[dict[str, Any]]] = {}
         for cube_name, dc in ds.datacubes.items():
+            total_bytes += _bake_channels(out_dir, name, cube_name, dc)
             vc, vb = _bake_viewer(out_dir, name, cube_name, dc, ds.clumps)
             re, rc, rb = _bake_rgb(out_dir, name, cube_name, dc, ds.clumps)
             viewer_count += vc

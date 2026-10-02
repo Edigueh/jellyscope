@@ -5,6 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { resolveRgbDefaults, captureRgbDeltas, snapRgbFromAnchor } from "../src/viewer/rgb.ts";
 import { clumpsInSelection } from "../src/viewer/selection.ts";
+import { composeRgb } from "../src/viewer/rgbComposite.ts";
 
 test("resolveRgbDefaults picks named F200W/F115W/F090W when present", () => {
   const filters = ["F090W", "F115W", "F150W", "F200W"];
@@ -52,4 +53,18 @@ test("clumpsInSelection handles a lasso polygon", () => {
   ];
   const ed = { lassoPoints: { x: [0, 1, 1, 0], y: [0, 0, 1, 1] } };
   assert.deepEqual(clumpsInSelection(ed, centroids), [1]);
+});
+
+test("RGB composition responds to filters, method, and Lupton Q", () => {
+  const r = Float64Array.from([0, 1, 2, 3, 4, 5, 6, 7]);
+  const g = Float64Array.from([7, 6, 5, 4, 3, 2, 1, 0]);
+  const b = Float64Array.from([1, 2, 4, 8, 16, 32, 64, 128]);
+  const percentile = composeRgb(r, g, b, "percentile_asinh", 8);
+  const swapped = composeRgb(g, r, b, "percentile_asinh", 8);
+  const lupton = composeRgb(r, g, b, "lupton", 4);
+  const luptonQ16 = composeRgb(r, g, b, "lupton", 16);
+
+  assert.notDeepEqual(Array.from(percentile), Array.from(swapped));
+  assert.notDeepEqual(Array.from(percentile), Array.from(lupton));
+  assert.notDeepEqual(Array.from(lupton), Array.from(luptonQ16));
 });
