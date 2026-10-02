@@ -49,6 +49,12 @@ def test_viewer_figure(client):
     assert len(data["figure"]["data"]) > 0
 
 
+def test_single_viewer_accepts_requested_colorscale(client):
+    resp = client.get(f"{BASE}/viewer/nircam/7?colorscale=Inferno")
+    assert resp.status_code == HTTPStatus.OK
+    assert resp.json()["figure"]["data"][0]["colorscale"] == "Inferno"
+
+
 def test_list_clumps(client):
     resp = client.get(f"{BASE}/clumps")
     data = resp.json()

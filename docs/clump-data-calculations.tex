@@ -1,0 +1,148 @@
+\documentclass[11pt]{article}
+\usepackage[a4paper,margin=25mm]{geometry}
+\usepackage{amsmath}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage[hidelinks]{hyperref}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\missing}{\textemdash}
+\title{How Jellyscope Displays Clump Data}
+\author{}
+\date{}
+\begin{document}
+\maketitle
+\section{Scope}
+This document follows the current Jellyscope implementation from the clump catalog files to the values shown in the Inspector, clump overlays, pixel readout, and separation panel. It separates catalog-supplied values from quantities calculated by Jellyscope.
+
+The live FastAPI application and the static prebaked application use the same clump formatter and geometric calculations.
+\section{Input data}
+Jellyscope loads one scalar row per clump from \code{clumps\_properties.csv} and reads:
+\begin{center}
+\small
+\begin{tabular}{p{0.29\textwidth} p{0.60\textwidth}}
+\toprule
+Field & Meaning in the application \\
+\midrule
+\code{clump\_id} & Integer identifier. \\
+\code{area\_pix} & Catalog-provided pixel area. \\
+\code{area\_arcsec2}, \code{area\_kpc2} & Catalog-provided projected areas. \\
+\code{x0}, \code{y0} & Centroid in zero-based pixel coordinates. \\
+\code{component} & Component label, such as \code{disk} or \code{outside}. \\
+\code{r\_eff\_arcsec}, \code{r\_eff\_kpc} & Optional catalog radii. \\
+\code{inside} & Optional boolean disk-membership flag. \\
+\code{mass} & Optional stellar mass used to derive $\log M_\star$. \\
+\code{sfr\_avg}, \code{ssfr\_avg}, \code{logzsol}, \code{dust2}, \code{tage}, \code{gas\_logu} & Optional catalog SED quantities. \\
+\bottomrule
+\end{tabular}
+\normalsize
+\end{center}
+
+The loader also reads \code{clumps\_pixels.csv}, containing \code{clump\_id}, \code{x}, and \code{y}. For clump $c$, Jellyscope builds
+\begin{equation}
+ M_c(y,x) = \begin{cases}
+ 1 & \text{if } (x,y) \text{ belongs to } c, \\
+ 0 & \text{otherwise.}
+ \end{cases}
+\end{equation}
+The mask uses only in-bounds coordinates. Its pixel count is
+\begin{equation}
+ N_c = \sum_{x,y} M_c(y,x).
+\end{equation}
+Jellyscope keeps the catalog value \code{area\_pix} for display; it does not replace it with $N_c$. The mask count provides a consistency check between catalog area and pixel membership.
+\section{Values shown in the interface}
+\subsection{Clump list}
+Each row shows the integer \code{clump\_id}, \code{component}, and \code{area\_pix} followed by ``px''. The selector exposes \code{All}, \code{Disk}, and \code{Outside}; these options filter \code{component}. The backend also supports an \code{inside} filter, but the current interface does not expose it. The API rounds \code{x0} and \code{y0} to two decimal places in the list payload, but the list does not render them.
+\subsection{Properties table}
+The formatter emits these ordered rows. Fixed rows show \missing when a value is unavailable; optional SED rows appear only when their source value exists.
+\renewcommand{\arraystretch}{1.15}
+\begin{longtable}{>{\raggedright\arraybackslash}p{0.27\textwidth} >{\raggedright\arraybackslash}p{0.35\textwidth} >{\raggedright\arraybackslash}p{0.28\textwidth}}
+\toprule
+Displayed label & Source or operation & Display format \\
+\midrule
+\endfirsthead
+\toprule
+Displayed label & Source or operation & Display format \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+Clump ID & \code{clump\_id} & Integer \\
+Component & \code{component} & First letter capitalized \\
+Inside disk & \code{inside} & ``Yes'', ``No'', or \missing \\
+Area (pixels) & \code{area\_pix} & Integer \\
+Area (arcsec$^2$) & \code{area\_arcsec2} & Four decimal places \\
+Area (kpc$^2$) & \code{area\_kpc2} & Four decimal places \\
+$R_{\rm eff}$ (arcsec) & \code{r\_eff\_arcsec} & Four decimal places or \missing \\
+$R_{\rm eff}$ (kpc) & \code{r\_eff\_kpc} & Four decimal places or \missing \\
+Centroid $x$ & \code{x0} & One decimal place \\
+Centroid $y$ & \code{y0} & One decimal place \\
+RA (deg) & WCS conversion at $(x0,y0)$ & Six decimal places or \missing \\
+Dec (deg) & WCS conversion at $(x0,y0)$ & Six decimal places or \missing \\
+\addlinespace
+$\log M_\star$ ($M_\odot$) & $\log_{10}(M_\star)$, when mass $>0$ & Three decimal places \\
+SFR (M$\odot$/yr) & \code{sfr\_avg}, optional & Four decimal places \\
+sSFR (yr$^{-1}$) & \code{ssfr\_avg}, optional & Scientific notation, three decimals \\
+$\log Z/Z_\odot$ & \code{logzsol}, optional & Three decimal places \\
+Dust $\tau_2$ & \code{dust2}, optional & Three decimal places \\
+Age (Gyr) & \code{tage}, optional & Three decimal places \\
+\code{log U (gas)} & \code{gas\_logu}, optional & Two decimal places \\
+\end{longtable}
+The mass row does not appear for a missing, zero, or negative mass. The multi-selection comparison table reuses these same formatted entries, placing one clump in each column.
+\section{Quantities calculated by Jellyscope}
+\subsection{Stellar mass logarithm}
+For a positive catalog mass stored numerically in solar-mass units, the formatter computes
+\begin{equation}
+ \log M_\star = \log_{10}(M_\star),
+\end{equation}
+and displays three decimal places. Jellyscope does not fit the mass; it performs only this logarithm.
+\subsection{Sky coordinates}
+At dataset load time, Jellyscope passes every centroid through the reference datacube WCS:
+\begin{equation}
+ (\alpha,\delta) = \operatorname{WCS}(x_0,y_0).
+\end{equation}
+The resulting values become \code{ra\_deg} and \code{dec\_deg}. The CSV columns \code{ra0} and \code{dec0}, when present, are not read by the clump loader. Without celestial WCS, the values remain missing and the rest of the clump interface continues to work.
+\subsection{Pairwise separations}
+For selected clumps $i$ and $j$, Jellyscope computes the great-circle separation
+\begin{equation}
+ \theta_{ij} = \operatorname{separation}(\operatorname{SkyCoord}_i, \operatorname{SkyCoord}_j)\quad\text{in arcseconds}.
+\end{equation}
+The endpoint creates each unordered pair once, with $i<j$, skips missing coordinates and non-finite results, and the interface displays three decimal places. Physical parsec separations are not currently calculated: \code{sep\_pc} is null because no galaxy distance is configured, so the pc column stays hidden.
+\subsection{Pixel lookup and overlap handling}
+The integer map uses \code{map[y, x]}. It stores $-1$ for an unassigned pixel, a clump ID for a unique assignment, and $-2$ when multiple clumps claim a pixel. The click handler reports ``no clump'' or ``ambiguous clump overlap'' for those cases.
+\subsection{Clump boundaries}
+For a clump with at least three pixel coordinates, Jellyscope applies a two-dimensional convex hull to
+\begin{equation}
+ P_c = \{(x,y) : M_c(y,x)=1\}.
+\end{equation}
+It returns hull vertices in pixel coordinates and repeats the first vertex to close the polygon. Fewer than three pixels, or a collinear set that makes the hull solver fail, triggers a closed raw-pixel fallback. The boundary is cached per clump. A convex hull can cover empty concavities; it represents the displayed outline, not a second area measurement.
+\subsection{Centroid and coordinate overlays}
+Centroid markers use \code{x0} and \code{y0} and carry the clump ID. The frontend maps pixel indices to arcsecond plot axes when applicable. Hover text rounds the pixel coordinate to an integer and formats RA and Dec to six decimal places.
+
+For the compact hover path, the frontend uses
+\begin{align}
+ x_{\rm pix} &= c_x + x_{\rm axis}/s, & y_{\rm pix} &= c_y + y_{\rm axis}/s, \\
+ \alpha &= \alpha_0 + {q_x(x_{\rm pix}-x_{\rm ref})\over \cos\delta_0}, & \delta &= \delta_0 + q_y(y_{\rm pix}-y_{\rm ref}),
+\end{align}
+where $s$ is the pixel scale and $(q_x,q_y)$ are WCS pixel scales. The property-table coordinates use Astropy's full WCS conversion.
+\section{Catalog quantities and upstream conventions}
+Jellyscope does not calculate \code{area\_arcsec2}, \code{area\_kpc2}, the two effective radii, SFR, sSFR, metallicity, dust, age, or gas ionization parameter. The catalog producer defines them.
+
+For a uniform square pixel scale $s$ in arcseconds per pixel, a catalog may use
+\begin{equation}
+ A_{\rm arcsec^2} = N_c s^2.
+\end{equation}
+Under the small-angle approximation, a known distance $D_{\rm kpc}$ gives
+\begin{equation}
+ A_{\rm kpc^2} = A_{\rm arcsec^2}\left({D_{\rm kpc}\over 206265}\right)^2.
+\end{equation}
+These equations describe common catalog conventions, not runtime operations. Jellyscope also does not derive $R_{\rm eff}$ from area; its definition belongs to the upstream measurement pipeline.
+\section{Implementation references}
+The implementation is split across these layers:
+\begin{itemize}
+  \item The scalar model and pixel masks live in \path{src/jellyscope/data/model/clumps.py}.
+  \item Display labels, formatting, and conditional rows live in \path{src/jellyscope/visualization/properties_panel.py}.
+  \item The API constructs list items, detail responses, pixel results, and separations in \path{src/jellyscope/web/routes.py}.
+  \item The frontend renders the same payloads and applies selection styling to boundary and centroid traces.
+\end{itemize}
+\end{document}
